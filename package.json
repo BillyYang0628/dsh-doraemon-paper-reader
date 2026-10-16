@@ -1,21 +1,26 @@
 {
-  "name": "dsh-mirror-reader",
+  "name": "dsh-doraemon-paper-reader",
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "description": "DSH 插件：论文精读工作台（获取与镜像 · 对照阅读 · 批注 · 词典）",
+  "description": "机器猫论文阅读器（Doraemon Paper Reader）：DSH 插件的论文精读工作台——获取与镜像 · 中英对照 · 引用蓝链 · 划词批注",
+  "icon": "./icon.svg",
   "license": "MIT",
   "main": "./src/index.js",
   "exports": {
     ".": "./src/index.js",
     "./package.json": "./package.json"
   },
-  "files": ["src", "cordis.patch.yml", "README.md"],
+  "files": ["src", "cordis.patch.yml", "README.md", "icon.svg"],
   "dsh": {
+    "manifestVersion": 1,
     "bundle": { "patch": "./cordis.patch.yml" }
+  },
+  "engines": {
+    "dsh": ">=0.2.0-rc.2 <0.3.0-0",
+    "node": "^22.19.0 || >=24"
   },
   "scripts": {
     "test": "node --test"
-  },
-  "engines": { "node": "^22.19.0 || >=24" }
+  }
 }

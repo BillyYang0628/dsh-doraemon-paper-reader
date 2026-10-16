@@ -1,4 +1,4 @@
-# dsh-mirror-reader
+# 机器猫论文阅读器 · dsh-doraemon-paper-reader
 
 DeepSeek Harness（DSH）插件：**论文精读工作台** —— 获取与镜像 · 中英对照阅读 · 引用蓝链 · 划词批注。
 
@@ -14,17 +14,18 @@ src/            宿主半区（Cordis 插件）
 test/           L0 单元测试（node --test）
 tools/          开发脚本（e2e、截图等，待加）
 docs/           设计笔记（待加）
+icon.svg        插件图标（清单 dsh.icon 引用）
 cordis.patch.yml  bundle 层：把自己插入 profile
 ```
 
 ## 开发回路
 
 ```powershell
-# 1) 装进开发 profile（链接方式，改完直接生效，无需发布）
-dsh plugin --profile dev add link:D:\DSH-Plugins\dsh-mirror-reader
+# 1) 装进开发 profile（链接方式，改完无需发布）
+dsh plugin --profile dev add link:D:\DSH-Plugins\dsh-doraemon-paper-reader
 
 # 2) 跑 L0 单元测试（不需要 Harness）
-node --test test/
+npm test
 
 # 3) 起开发 profile 观察加载日志
 dsh dev

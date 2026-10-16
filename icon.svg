@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Doraemon Paper Reader">
+  <rect width="128" height="128" rx="26" fill="#4D6BFE"/>
+  <g fill="#FFFFFF">
+    <path d="M34 30l10-14 10 12z"/>
+    <path d="M94 30l-10-14-10 12z"/>
+    <circle cx="64" cy="58" r="30"/>
+  </g>
+  <g fill="#4D6BFE">
+    <circle cx="52" cy="52" r="4.6"/>
+    <circle cx="76" cy="52" r="4.6"/>
+    <circle cx="64" cy="66" r="4"/>
+  </g>
+  <g stroke="#4D6BFE" stroke-width="2.4" stroke-linecap="round">
+    <path d="M64 66v8"/>
+    <path d="M40 62h-9M44 70l-8 5M88 62h9M84 70l8 5"/>
+  </g>
+  <g transform="translate(76 78)">
+    <rect x="0" y="0" width="34" height="40" rx="4" fill="#FFFFFF"/>
+    <g stroke="#4D6BFE" stroke-width="2.4" stroke-linecap="round">
+      <path d="M7 10h20M7 18h20M7 26h12"/>
+    </g>
+  </g>
+</svg>
