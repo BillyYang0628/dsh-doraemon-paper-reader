@@ -94,6 +94,18 @@
 - 测试产生的论文、镜像、缓存**必须可清理、可再生成**，跑完收干净；不留孤儿进程与占用端口。
 - 密钥只进 `$DSH_HOME/.env` 或 DSH 凭据存储：**绝不进 git、绝不写进文档、不在回复里回显明文**。
 
+### 2.6 插件安装与技能接线（来自官方 `cordis-plugin-development` 技能）
+
+- **装插件走正规入口**：Harness 会话内用 `plugin_manager` 工具、`action: install_bundle`、`target` 传**包目录绝对路径**；
+  命令行用 `dsh plugin --profile <name> add …`。
+  **不许手写 profile 的 `package.json` / `cordis.patch.yml`，也不许在 profile 目录里跑 pnpm**——这些步骤由上面的入口自己完成。
+- **查 API 用活体查询，不靠猜**：`cordis_inspect_query` 能查 Service 方法、Event 派发模式、插件的 Config JSON Schema、
+  当前 Agent 的工具清单，以及**实时的 Client Slot 树与主题 token**。定 slot key / 主题变量前先查它。
+- **UI 插件四条硬要求**：只用宿主主题 token；**不 import 官方 client 包**（如 `@deepseek-ai/dsh-client-ui-primitives`）；
+  明暗主题下都正常；**不替换 app root、不追加第二个应用、不读别的插件的 DOM/样式来"估位置"**（要选本来就分配空间的 slot）。
+- **验证边界要说清**：没有浏览器控制权时，只验证 JS 语法、清单、Client slot 注册，并**明确报告"视觉验证不可用"**；
+  **严禁**用 mock 页面截图冒充验证（与 §2.1 同源）。
+
 ## 3. 单一事实源（改了这里就别在别处再抄一份）
 
 | 事实 | 唯一来源 |
@@ -144,6 +156,17 @@
 | 网络 | npm registry 直连可用；**GitHub 需 `curl -k`**（本机加速器做本地 MITM） |
 | 学术 API 实测 | OpenAlex 1.5 s / arXiv API 0.7 s / Crossref 5.8 s；**出版社页面 403/303，不抓** |
 | 源码位置 | 固定在 `D:\DSH-Plugins\<repo>`；**不要放进 `D:\DSH`（运行时安装目录）** |
+
+**技能（skills）接线现状（2026-10-16 实测）**
+
+| 事项 | 结论 |
+|---|---|
+| 官方随包技能 | `agent-experience`、`cordis-plugin-development`、`editing-cordis-compositions`、`cordis-composition-reference`；装在 `@deepseek-ai/dsh-agent-preset/skills/` |
+| 它们在哪可见 | **只有 Web / 桌面端的「创造模式」预设（`preset-cordis`）会挂载**（它把官方 skills 目录配成 `customSkillDirs`）。**开发本插件时请把会话预设切到创造模式** |
+| headless / 无 preset 的 profile | 默认看不到官方技能（那些 profile 没有 preset）；用 `工具\dev\official-skills.overlay.yml` 补：`dsh --profile headless --patch 工具\dev\official-skills.overlay.yml "任务"` |
+| 我们自己的技能 | 放 `.dsh/skills/<kebab-name>/SKILL.md`（rank 100，优先级最高，随仓库走）。已有 `doraemon-dev-loop` |
+| 技能加载优先级 | 100 `<项目>/.dsh/skills` → 200 `<项目>/.agents/skills` → 300 `customSkillDirs` → 400 `<DSH_HOME>/skills` → 500 `<Agents home>/skills` → 600 bundled |
+| 第三方插件开发技能 | **不装**（官方那套就是权威，且随版本更新）。参考文献：`dsh-plugin-developer-skill` 等无许可证，只能读原理 |
 
 ## 7. 交付规矩
 

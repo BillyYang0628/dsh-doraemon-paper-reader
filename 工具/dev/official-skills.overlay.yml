@@ -1,0 +1,20 @@
+# 开发用 overlay：让"没有 agent preset"的运行方式（如 headless / 自定义 profile）
+# 也能看到官方随包技能（agent-experience / cordis-plugin-development /
+# editing-cordis-compositions / cordis-composition-reference）。
+#
+# 背景：在 Web / 桌面端的「创造模式」预设里，官方技能本来就已挂载（preset-cordis 的
+# skill-filesystem.customSkillDirs）；headless 这类没有 preset 的 profile 没有这条接线，
+# 所以用这个 overlay 补上。
+#
+# 用法：dsh --profile headless --patch 工具\dev\official-skills.overlay.yml "任务"
+# 路径用与官方相同的表达式解析，DSH 升级/换安装目录后不用改。
+- insert:
+    - id: doraemon-official-skills
+      name: '@deepseek-ai/dsh-skill-filesystem'
+      config:
+        providerName: official-skills
+        includeDefaultRoots: false
+        customSkillDirs:
+          - !!js >-
+            process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@deepseek-ai/dsh-agent-preset/package.json')),
+            'skills')

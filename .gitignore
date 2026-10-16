@@ -2,3 +2,5 @@ node_modules/
 work/
 *.log
 .DS_Store
+工具/gen/
+工具/gen/
