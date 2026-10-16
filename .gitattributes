@@ -1,0 +1,2 @@
+# 统一换行：仓库内一律 LF，避免 CRLF/LF 混杂产生 diff 噪声（AGENTS.md K9）
+* text=auto eol=lf
