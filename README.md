@@ -8,15 +8,22 @@ DeepSeek Harness（DSH）插件：**论文精读工作台** —— 获取与镜�
 ## 目录结构
 
 ```
+docs/           设计文档（权威版本在仓库里）
+  功能框架-v0.md  论文精读工作台的功能框架基线（含 §12 修订记录 R1）
 src/            宿主半区（Cordis 插件）
   index.js        插件壳：apply(ctx)
   identifiers.js  纯函数：把输入统一成论文标识符（DOI/arXiv/PMID/标题）
 test/           L0 单元测试（node --test）
 tools/          开发脚本（e2e、截图等，待加）
-docs/           设计笔记（待加）
 icon.svg        插件图标（清单 dsh.icon 引用）
 cordis.patch.yml  bundle 层：把自己插入 profile
 ```
+
+## 设计文档
+
+- [`docs/功能框架-v0.md`](docs/功能框架-v0.md) —— 项目功能框架基线：目标能力、环境基线、
+  生态资产、架构事实、路线选择、数据模型、缺口清单、决策问题、里程碑，以及 §12 修订记录（R1）。
+  讨论新功能时先看它的 **§12 写作规则**：只对"没有现成成熟方案"的部分做详细可行性分析。
 
 ## 开发回路
 
