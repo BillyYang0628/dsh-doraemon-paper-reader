@@ -1,0 +1,4 @@
+# dsh-mirror-reader bundle layer —— 作为一层 patch 插入 profile
+- insert:
+    - id: dsh-mirror-reader
+      name: 'dsh-mirror-reader'

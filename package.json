@@ -1,0 +1,21 @@
+{
+  "name": "dsh-mirror-reader",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "DSH 插件：论文精读工作台（获取与镜像 · 对照阅读 · 批注 · 词典）",
+  "license": "MIT",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": ["src", "cordis.patch.yml", "README.md"],
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" }
+  },
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "engines": { "node": "^22.19.0 || >=24" }
+}
