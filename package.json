@@ -15,7 +15,7 @@
     "bundle": { "patch": "./cordis.patch.yml" }
   },
   "scripts": {
-    "test": "node --test test/"
+    "test": "node --test"
   },
   "engines": { "node": "^22.19.0 || >=24" }
 }
