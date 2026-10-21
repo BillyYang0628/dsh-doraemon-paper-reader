@@ -1025,6 +1025,8 @@ window.__ModuleLoader__.load({
   line-height:1.25;cursor:pointer}
 .dpr-readerPage:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-brand-primary)}
 .dpr-readerPage:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dpr-readerPage.is-flow{opacity:.62}
+.dpr-readerPage.is-special{opacity:.92;font-weight:500}
 .dpr-readerP>.dpr-readerPage,.dpr-readerMeta>.dpr-readerPage,.dpr-readerRef>.dpr-readerPage{
   float:right;margin:2px 0 2px 8px}
 .dpr-readerRefs{list-style:none;padding-left:0;margin:10px 0 0}
@@ -10588,25 +10590,33 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
         setDraftQuestion('')
         setAskStatus('')
       }
-      const pageBadge = (page) =>
-        page && jobId
-          ? React.createElement(
-              'button',
-              {
-                type: 'button',
-                className: 'dpr-readerPage',
-                title: t('reader.page') + page,
-                'aria-label': t('reader.page') + page,
-                onMouseDown: (event) => event.stopPropagation(),
-                onClick: (event) => {
-                  event.preventDefault()
-                  event.stopPropagation()
-                  setSourcePagePreview(Number(page) || 0)
-                },
+      let lastInlinePage = null
+      const pageBadge = (page, options = {}) => {
+        const normalizedPage = Number(page) || 0
+        const always = Boolean(options.always)
+        if (!normalizedPage || !jobId) return null
+        if (!always && lastInlinePage === normalizedPage) return null
+        if (!always) lastInlinePage = normalizedPage
+        return (
+          React.createElement(
+            'button',
+            {
+              type: 'button',
+              className: 'dpr-readerPage' + (always ? ' is-special' : ' is-flow'),
+              title: t('reader.page') + normalizedPage,
+              'aria-label': t('reader.page') + normalizedPage,
+              'data-page-group': always ? 'special' : 'flow',
+              onMouseDown: (event) => event.stopPropagation(),
+              onClick: (event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                setSourcePagePreview(normalizedPage)
               },
-              t('reader.page') + page,
-            )
-          : null
+            },
+            t('reader.page') + normalizedPage,
+          )
+        )
+      }
 
       const citationButton = (block, span, text, key) =>
         React.createElement(
@@ -10792,7 +10802,7 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
                 ? null
                 : React.createElement('strong', null, (block.label || 'Algorithm') + ' '),
               caption,
-              pageBadge(block.page),
+              pageBadge(block.page, { always: true }),
               bubbleFor(block),
             ),
             React.createElement(
@@ -10845,7 +10855,7 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
               langMode === 'bilingual' && translated?.segments
                 ? React.createElement('span', { className: 'dpr-biTarget dpr-biCaptionPair' }, translatedText(block))
                 : null,
-              pageBadge(block.page),
+              pageBadge(block.page, { always: true }),
               bubbleFor(block),
             ),
             formula?.valid
@@ -10950,6 +10960,7 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
               'data-section': block.section || '',
             },
             React.createElement('code', null, block.text),
+            pageBadge(block.page, { always: true }),
             bubbleFor(block),
           )
         }
@@ -10976,7 +10987,7 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
               'data-source-text': block.text || '',
             },
             content,
-            pageBadge(block.page),
+            pageBadge(block.page, { always: true }),
             bubbleFor(block),
           )
         }

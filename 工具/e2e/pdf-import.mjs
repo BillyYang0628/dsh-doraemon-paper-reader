@@ -23,6 +23,8 @@ function parseArgs(argv) {
     else if (token === '--headless') out.headless = true
     else if (token === '--headed') out.headless = false
     else if (token === '--send-mode') out.sendMode = argv[++i]
+    else if (token === '--title-includes') out.titleIncludes = argv[++i]
+    else if (token === '--skip-model-answer') out.skipModelAnswer = true
     else throw new Error('未知参数：' + token)
   }
   return out
@@ -144,8 +146,27 @@ try {
   await page.getByRole('button', { name: '打开阅读页', exact: true }).click()
   await page.locator('.dpr-readerTitle').waitFor({ state: 'visible', timeout: 30000 })
   const title = (await page.locator('.dpr-readerTitle').innerText()).trim()
-  if (!title.includes('Smart Sticker')) errors.push('阅读页标题不对：' + JSON.stringify(title))
-  const pageBadge = page.locator('.dpr-readerPage').first()
+  const expectedTitle = args.titleIncludes ?? 'Smart Sticker'
+  if (!title.includes(expectedTitle)) errors.push('阅读页标题不对：' + JSON.stringify(title))
+  const flowBadges = page.locator('.dpr-readerPage[data-page-group="flow"]')
+  const specialBadges = page.locator('.dpr-readerPage[data-page-group="special"]')
+  const paragraphCount = await page.locator('.dpr-readerP[data-block-id]').count()
+  const flowBadgeCount = await flowBadges.count()
+  const specialBadgeCount = await specialBadges.count()
+  const flowBadgeLabels = await flowBadges.allInnerTexts()
+  if (flowBadgeCount === 0) errors.push('正文没有渲染分组页码入口')
+  if (new Set(flowBadgeLabels).size !== flowBadgeLabels.length) {
+    errors.push('同一页码在正文页标中重复出现：' + JSON.stringify(flowBadgeLabels))
+  }
+  if (paragraphCount >= 10 && flowBadgeCount >= paragraphCount) {
+    errors.push(`正文页标没有按页合并：${flowBadgeCount} badges / ${paragraphCount} paragraphs`)
+  }
+  const hasSpecialBlocks =
+    (await page.locator('.dpr-readerFigure, .dpr-readerAlgorithm, .dpr-readerCode').count()) > 0
+  if (hasSpecialBlocks && specialBadgeCount === 0) {
+    errors.push('图表/算法等特殊信息没有保留独立页码入口')
+  }
+  const pageBadge = specialBadgeCount > 0 ? specialBadges.first() : flowBadges.first()
   if ((await pageBadge.count()) === 0) {
     errors.push('阅读页没有渲染原版页码入口')
   } else {
@@ -396,21 +417,25 @@ try {
     await page.waitForTimeout(300)
 
     // 摘要里没有原文；回答若出现 b0004 / 原文首句 / Table 1，说明工具确实把完整包交给了模型。
-    const sawTool = await page
-      .waitForFunction(
-        () => {
-          const text = document.body.innerText
-          return (
-            text.includes('b0004') ||
-            text.includes('The supply chain is a vast and complex process')
-          )
-        },
-        null,
-        { timeout: 45000 },
-      )
-      .then(() => true)
-      .catch(() => false)
-    if (!sawTool) errors.push('等待 45 秒仍未看到完整批注包被模型使用的证据（b0004 / 原文首句 / Table 1）')
+    if (!args.skipModelAnswer) {
+      const sawTool = await page
+        .waitForFunction(
+          () => {
+            const text = document.body.innerText
+            return (
+              text.includes('b0004') ||
+              text.includes('The supply chain is a vast and complex process')
+            )
+          },
+          null,
+          { timeout: 45000 },
+        )
+        .then(() => true)
+        .catch(() => false)
+      if (!sawTool) {
+        errors.push('等待 45 秒仍未看到完整批注包被模型使用的证据（b0004 / 原文首句 / Table 1）')
+      }
+    }
     await page.screenshot({ path: path.join(outDir, 'ask.png') })
     await page.emulateMedia({ colorScheme: 'dark' })
     await page.waitForTimeout(300)
@@ -517,6 +542,11 @@ try {
         firstTimer,
         resumedTimer,
         images: images.length,
+        pageBadges: {
+          paragraphs: paragraphCount,
+          flow: flowBadgeCount,
+          special: specialBadgeCount,
+        },
         broken,
         warnings: ['聊天回答里的引用链接尚未稳定接入阅读页；当前使用段尾批注气泡高亮'],
         errors,

@@ -254,6 +254,15 @@ test('阅读页算法：题注、编号步骤与控制流缩进共同渲染', as
   assert.match(source, /'data-kind': 'algorithm'/)
 })
 
+test('阅读页页码：正文按页合并，特殊信息保留独立入口', async () => {
+  const source = await readFile(CLIENT_FILE, 'utf8')
+  assert.match(source, /let lastInlinePage = null/)
+  assert.match(source, /if \(!always && lastInlinePage === normalizedPage\) return null/)
+  assert.match(source, /'data-page-group': always \? 'special' : 'flow'/)
+  assert.match(source, /\.dpr-readerPage\.is-flow\{opacity:\.62\}/)
+  assert.match(source, /\.dpr-readerPage\.is-special\{opacity:\.92/)
+})
+
 test('阅读页增强：公式/表格按钮、回跳 BroadcastChannel 与整篇复核入口已接线', async () => {
   const source = await readFile(CLIENT_FILE, 'utf8')
   assert.match(source, /startVisualJob\('formulas'\)/)
