@@ -36,11 +36,22 @@ node 工具/pdf-pipeline/screenshot.mjs `
   "工具/gen/pdf-html-spike-20261019/shots"
 ```
 
-三篇异形论文的真实回归（Sensors / Plague / PLOS，按标题自动找本地 PDF）：
+四篇异形论文的真实回归（Sensors / Plague / PLOS / AIoT，按标题自动找本地 PDF）：
 
 ```powershell
 npm run test:pdf-regression
 ```
+
+每篇回归在 `extract + reconcile` 后自动运行确定性结构审计。也可以对任意 job 单独跑：
+
+```powershell
+npm run audit:pdf -- <job-dir> --out <audit-dir>
+npm run audit:pdf -- <after-dir> --out <audit-dir> --baseline <before-audit.json>
+```
+
+审计输出 `audit-report.json` / `audit-report.md`，规则覆盖页眉污染、假标题、Abstract、
+算法控制流、段落断裂、连字符、参考文献、表格裁剪/文字行边界和报告新鲜度。报告带
+`scopeLimits`；`0 findings` 只表示确定性结构范围通过，不代表中文语义或单元格结构已通过。
 
 ## 产物
 
@@ -75,8 +86,8 @@ npm run test:pdf-regression
 | 参考文献 | 34 条（与样本工程台账一致） |
 | 提取耗时 | 约 6–7 秒（含 200 DPI 裁剪，不含截图） |
 | 图片加载 | 21/21 成功，浏览器 console 0 error |
-| L0 单测 | 35/35 通过 |
-| 三篇回归 | 3/3 `ok:true`（D-050） |
+| L0 单测 | Python PDF 管线 48/48；Node 171/171 |
+| 四篇回归 | 4/4 `ok:true`，每篇结构审计 0 findings（D-089） |
 
 样本 PDF 与裁剪图只放在 `工具/gen/`（已被 `.gitignore` 忽略），不随插件发布。
 
