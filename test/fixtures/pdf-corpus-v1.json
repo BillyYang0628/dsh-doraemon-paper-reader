@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "purpose": "B0 PDF structure and reader regression corpus",
+  "jobRoot": "$DSH_HOME/doraemon-paper-reader/jobs",
+  "sources": [
+    {
+      "id": "treyni-aiot-2026",
+      "title": "A Smart AIoT-Based Mobile Application for Plant Disease Detection and Environment Management in Small-Scale Farms Using MobileViT",
+      "sha256": "c83192cda5fd891a43d698bf7b2679f791b8a86f79e457af3a8c75f2b92fc5b9",
+      "mirrorKind": "pdf",
+      "expectedPages": 19,
+      "features": ["algorithm", "numbered-steps", "long-table", "figures", "equations", "references"],
+      "focusIssues": ["R-005", "R-011", "R-013", "R-018"],
+      "knownFailure": {
+        "page": 10,
+        "blocks": ["b0104", "b0105", "b0106", "b0107"],
+        "observed": "Algorithm caption is separate; BEGIN/END are headings; all 12 pseudo-code steps are compressed into one paragraph."
+      }
+    },
+    {
+      "id": "smart-sticker",
+      "title": "Smart Sticker Ultra-Low-Power Shock Detection in the Supply Chain",
+      "sha256": "1b591b488200cd404271dcb4608f94bd5f47dbfaf8f277177ed02401d900e285",
+      "mirrorKind": "pdf",
+      "expectedPages": 21,
+      "features": ["two-column", "full-width-figure", "tables", "equations", "references"],
+      "focusIssues": ["R-013", "R-018"]
+    },
+    {
+      "id": "plague",
+      "title": "Multiple Antimicrobial Resistance in Plague: An Emerging Public Health Risk",
+      "sha256": "f8c26158a94a7b96a53dde7e3080b12beac5e49014b71d42feba185f8edbf087",
+      "mirrorKind": "pdf",
+      "expectedPages": 6,
+      "features": ["top-two-column", "bottom-full-width-figure", "rotated-tables"],
+      "focusIssues": ["R-013", "R-018"]
+    },
+    {
+      "id": "plos-data-sharing",
+      "title": "Sharing Detailed Research Data Is Associated with Increased Citation Rate",
+      "sha256": "b52ca44dfd09d240543b80315f0cd43fe9ba7946f2b5650d5580213ed5d9186c",
+      "mirrorKind": "pdf",
+      "expectedPages": 5,
+      "features": ["two-column", "supporting-information", "tables", "references"],
+      "focusIssues": ["R-006", "R-011"]
+    },
+    {
+      "id": "riddle-html",
+      "title": "Riddle Me This! Stealthy Membership Inference for Retrieval-Augmented Generation",
+      "sha256": "d32cd924612e98a3bf12d6dd9fa5bd42505a72fec8bbb8ae0e6cfd5c79167d31",
+      "mirrorKind": "html",
+      "expectedPages": 0,
+      "features": ["html", "many-headings", "equations", "tables", "references"],
+      "focusIssues": ["R-006", "R-011"]
+    },
+    {
+      "id": "deepseek-r1-html",
+      "title": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+      "sha256": "c46e1593f0d86b67906f3514f73eb92b6726c194e8ae65044d07a1ce26d86217",
+      "mirrorKind": "html",
+      "expectedPages": 0,
+      "features": ["html", "equations", "tables", "references"],
+      "focusIssues": ["R-006", "R-011"]
+    }
+  ]
+}

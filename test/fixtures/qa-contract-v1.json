@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "purpose": "B0 annotation Q&A behavior baseline",
+  "defaultContract": [
+    "answer the user's direct question first",
+    "explain and analyze before criticizing",
+    "place optional limitations or critique only near the end",
+    "reconstruct and summarize instead of paraphrasing sentence by sentence",
+    "separate paper evidence, external evidence, and model inference"
+  ],
+  "cases": [
+    {
+      "id": "term-explanation",
+      "prompt": "解释这段里的 MobileViT 是什么，作者为什么用它。",
+      "expectedFocus": "direct explanation from the selected passage",
+      "critiqueAllowedAtEnd": false,
+      "webSearchExpected": false
+    },
+    {
+      "id": "method-understanding",
+      "prompt": "把这段方法按输入、处理、输出重新讲清楚。",
+      "expectedFocus": "understandable reconstruction of the method",
+      "critiqueAllowedAtEnd": false,
+      "webSearchExpected": false
+    },
+    {
+      "id": "figure-table-reading",
+      "prompt": "这个表最重要的比较结论是什么？",
+      "expectedFocus": "table reading tied to exact rows and values",
+      "critiqueAllowedAtEnd": false,
+      "webSearchExpected": false
+    },
+    {
+      "id": "section-role",
+      "prompt": "这一段在整篇论文里起什么作用？",
+      "expectedFocus": "connection to the paper's argument and neighboring sections",
+      "critiqueAllowedAtEnd": false,
+      "webSearchExpected": false
+    },
+    {
+      "id": "inspiration-no-direction",
+      "prompt": "这段里有什么值得继续做的点子？",
+      "expectedFocus": "evidence-grounded ideas and possible next steps",
+      "critiqueAllowedAtEnd": true,
+      "webSearchExpected": true
+    },
+    {
+      "id": "explicit-critique",
+      "prompt": "请批判性评价这段方法设计和实验是否充分。",
+      "expectedFocus": "critique is explicitly requested and should be substantive",
+      "critiqueAllowedAtEnd": true,
+      "webSearchExpected": false
+    },
+    {
+      "id": "paper-only",
+      "prompt": "只根据原文解释，不要使用外部资料。",
+      "expectedFocus": "strict paper-only answer",
+      "critiqueAllowedAtEnd": false,
+      "webSearchExpected": false
+    }
+  ]
+}
