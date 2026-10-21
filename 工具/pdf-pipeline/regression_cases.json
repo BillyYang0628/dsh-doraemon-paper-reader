@@ -1,0 +1,68 @@
+[
+  {
+    "id": "sensors",
+    "titleIncludes": "Smart Sticker Ultra-Low-Power Shock Detection",
+    "expect": {
+      "pages": 21,
+      "blockTypes": { "figure": 15, "table": 3, "equation": 3, "reference": 34 },
+      "minBlockTypes": { "paragraph": 45, "heading": 5 },
+      "referenceRange": [1, 34],
+      "warnings": [],
+      "requiredText": [
+        "Smart Sticker Ultra-Low-Power Shock Detection in the Supply Chain",
+        "Table 2. Measured Smart Sticker current consumption",
+        "15″ laptop",
+        "t∈[t1,t2]"
+      ],
+      "forbiddenText": ["(cid:", "�"],
+      "order": [
+        ["1. Introduction", "2. Related Work", "3. Smart Sticker for Shock Detection", "4. Experimental Results", "5. Conclusions", "References"]
+      ]
+    }
+  },
+  {
+    "id": "plague",
+    "titleIncludes": "Multiple Antimicrobial Resistance in Plague",
+    "expect": {
+      "pages": 6,
+      "blockTypes": { "figure": 1, "table": 3, "reference": 18 },
+      "minBlockTypes": { "paragraph": 20, "heading": 5 },
+      "referenceRange": [1, 18],
+      "warnings": [],
+      "textQuality": [],
+      "rotatedTableText": true,
+      "requiredText": [
+        "RESULTS AND DISCUSSION",
+        "doi:10.1371/journal.pone.0000309.g001",
+        "merRTPCADE",
+        "SUPPORTING INFORMATION"
+      ],
+      "forbiddenText": ["(cid:", "�"],
+      "order": [
+        ["RESULTS AND DISCUSSION", "REFERENCES", "ACKNOWLEDGMENTS"]
+      ]
+    }
+  },
+  {
+    "id": "plos",
+    "titleIncludes": "Sharing Detailed Research Data Is Associated with Increased Citation Rate",
+    "expect": {
+      "pages": 5,
+      "blockTypes": { "table": 3, "reference": 37 },
+      "minBlockTypes": { "paragraph": 35, "heading": 5 },
+      "referenceRange": [1, 37],
+      "warnings": [],
+      "textQuality": [],
+      "requiredText": [
+        "SUPPORTING INFORMATION",
+        "Text S1",
+        "Text S3",
+        "ACKNOWLEDGMENTS"
+      ],
+      "forbiddenText": ["(cid:", "�"],
+      "order": [
+        ["SUPPORTING INFORMATION", "REFERENCES", "ACKNOWLEDGMENTS"]
+      ]
+    }
+  }
+]
