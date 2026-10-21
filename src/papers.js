@@ -1310,7 +1310,12 @@ export function createPaperApi({
     const referenceText = String(body?.referenceText || '').trim()
     const number = Number(body?.number) || 0
     if (!referenceText || !number) {
-      throw Object.assign(new Error('引用编号或参考文献原文为空'), { statusCode: 400 })
+      return {
+        kind: 'invalid',
+        number,
+        message: '这条参考文献缺少编号或可解析原文，无法继续查询被引论文。',
+        reference: extractReferenceFields(referenceText),
+      }
     }
     const contextHash = citationContextHash({
       jobId: body?.citing?.jobId || '',
@@ -1413,7 +1418,11 @@ export function createPaperApi({
     const number = Number(body?.number) || 0
     const citing = body?.citing && typeof body.citing === 'object' ? body.citing : {}
     if (!referenceText || !number) {
-      throw Object.assign(new Error('引用编号或参考文献原文为空'), { statusCode: 400 })
+      return {
+        kind: 'invalid',
+        number,
+        message: '这条参考文献缺少编号或可解析原文，无法生成引用分析。',
+      }
     }
     const cardHash = citationContextHash({
       jobId: citing?.jobId || '',

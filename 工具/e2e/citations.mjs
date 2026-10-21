@@ -89,6 +89,7 @@ try {
     .waitForFunction(
       () =>
         document.querySelectorAll('.dpr-candidate').length > 0 ||
+        document.querySelectorAll('.dpr-citeChoices button').length > 0 ||
         document.querySelectorAll('.dpr-citeSection').length > 0 ||
         document.querySelectorAll('.dpr-citeWarn').length > 0 ||
         document.querySelectorAll('.dpr-citeCard .dpr-error').length > 0,
@@ -96,6 +97,20 @@ try {
       { timeout: 30000 },
     )
     .catch(() => {})
+  const groupChoices = page.locator('.dpr-citeChoices button')
+  if ((await groupChoices.count()) > 0) {
+    await groupChoices.first().click()
+    for (let i = 0; i < 45; i += 1) {
+      await page.waitForTimeout(1000)
+      if (
+        (await page.locator('.dpr-citeSection').count()) > 0 ||
+        (await page.locator('.dpr-citeWarn').count()) > 0 ||
+        (await page.locator('.dpr-citeCard .dpr-error').count()) > 0
+      ) {
+        break
+      }
+    }
+  }
   const candidates = page.locator('.dpr-candidate')
   if ((await candidates.count()) > 1) {
     await candidates.nth(1).click()

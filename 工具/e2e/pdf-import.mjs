@@ -94,16 +94,29 @@ try {
   if (await clickIfVisible('换一份 PDF')) await page.waitForTimeout(300)
   await page.locator('.dpr-pane input[type=file]').waitFor({ state: 'visible', timeout: 10000 })
 
-  // 拖入路径：用一个很小的合法 PDF 文件触发 React onDrop；随后再用真实样本走 input 选择。
-  await page.evaluate(() => {
+  // 拖入路径：先模拟宿主窗口收到 dragenter，再在插件 drop 区完成 drop。
+  // 插件必须在窗口捕获阶段接管，避免宿主全屏拖放遮罩留下。
+  const paneBox = await page.locator('.dpr-pane').first().boundingBox()
+  await page.evaluate(({ x, y }) => {
     const transfer = new DataTransfer()
     transfer.items.add(
       new File([new TextEncoder().encode('%PDF-1.4\n%%EOF\n')], 'drop-test.pdf', { type: 'application/pdf' }),
     )
+    document.dispatchEvent(
+      new DragEvent('dragenter', {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer: transfer,
+        clientX: x,
+        clientY: y,
+      }),
+    )
     const drop = document.querySelector('.dpr-drop')
     drop.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }))
-  })
-  await page.waitForTimeout(250)
+  }, { x: Math.round((paneBox?.x || 0) + 20), y: Math.round((paneBox?.y || 0) + 20) })
+  await page.waitForTimeout(350)
+  const hostDropOverlay = (await page.locator('body').innerText()).includes('文件或图片拖动到此处即可添加')
+  if (hostDropOverlay) errors.push('插件内拖放后残留了宿主全屏拖放遮罩')
   const dropMeta = (await page.locator('.dpr-fileCard').first().innerText()).trim()
   if (!dropMeta.includes('drop-test.pdf')) errors.push('拖入没有选中 PDF：' + JSON.stringify(dropMeta))
   const dropCount = await page.getByText('drop-test.pdf', { exact: false }).count()
@@ -132,6 +145,25 @@ try {
   await page.locator('.dpr-readerTitle').waitFor({ state: 'visible', timeout: 30000 })
   const title = (await page.locator('.dpr-readerTitle').innerText()).trim()
   if (!title.includes('Smart Sticker')) errors.push('阅读页标题不对：' + JSON.stringify(title))
+  const pageBadge = page.locator('.dpr-readerPage').first()
+  if ((await pageBadge.count()) === 0) {
+    errors.push('阅读页没有渲染原版页码入口')
+  } else {
+    await pageBadge.click()
+    await page.locator('.dpr-sourceOverlay').waitFor({ state: 'visible', timeout: 10000 })
+    const sourceImage = page.locator('.dpr-sourceImage')
+    await sourceImage.waitFor({ state: 'visible', timeout: 10000 })
+    const sourceLoaded = await sourceImage.evaluate((element) => ({
+      complete: element.complete,
+      width: element.naturalWidth,
+      src: element.getAttribute('src'),
+    }))
+    if (!sourceLoaded.complete || sourceLoaded.width === 0) {
+      errors.push('原版页查看器图片没有加载：' + JSON.stringify(sourceLoaded))
+    }
+    await page.getByRole('button', { name: '关闭', exact: true }).last().click()
+    await page.locator('.dpr-sourceOverlay').waitFor({ state: 'detached', timeout: 5000 })
+  }
   await page.evaluate(async () => {
     for (let y = 0; y < document.body.scrollHeight; y += 900) {
       window.scrollTo(0, y)

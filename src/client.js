@@ -1020,8 +1020,10 @@ window.__ModuleLoader__.load({
   border:1px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-sm)}
 .dpr-readerPage{display:inline-block;margin-left:6px;padding:1px 5px;font-size:10px;border:1px solid var(--dsw-alias-border-l2);
   border-radius:999px;color:var(--dsw-alias-label-tertiary);text-decoration:none;white-space:nowrap;
-  vertical-align:middle;user-select:none;opacity:.82}
+  vertical-align:middle;user-select:none;opacity:.82;background:var(--dsw-alias-bg-layer-1);font:inherit;
+  line-height:1.25;cursor:pointer}
 .dpr-readerPage:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-brand-primary)}
+.dpr-readerPage:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dpr-readerP>.dpr-readerPage,.dpr-readerMeta>.dpr-readerPage,.dpr-readerRef>.dpr-readerPage{
   float:right;margin:2px 0 2px 8px}
 .dpr-readerRefs{list-style:none;padding-left:0;margin:10px 0 0}
@@ -1037,6 +1039,26 @@ window.__ModuleLoader__.load({
 .dpr-citeLink:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dpr-citeOverlay{position:absolute;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;
   padding:24px;background:rgba(0,0,0,.22)}
+.dpr-sourceOverlay{position:absolute;inset:0;z-index:45;display:flex;align-items:center;justify-content:center;
+  padding:18px;background:rgba(0,0,0,.34)}
+.dpr-sourceCard{display:flex;flex-direction:column;width:min(1040px,100%);height:min(820px,calc(100vh - 56px));
+  overflow:hidden;background:var(--dsw-alias-settings-card-fill);border:1px solid var(--dsw-alias-border-l3);
+  border-radius:var(--dsw-radius-lg);box-shadow:0 18px 50px rgba(0,0,0,.28)}
+.dpr-sourceBody{flex:1;min-height:0;overflow:auto;padding:12px;text-align:center;
+  background:var(--dsw-alias-bg-layer-2)}
+.dpr-sourceImage{display:block;max-width:100%;height:auto;margin:0 auto;
+  background:var(--dsw-alias-settings-card-fill);box-shadow:0 4px 18px rgba(0,0,0,.14)}
+.dpr-sourceError{padding:36px 20px;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:1.6}
+.dpr-sourceActions{display:flex;align-items:center;justify-content:center;gap:8px;padding:10px 12px;
+  border-top:1px solid var(--dsw-alias-border-l2)}
+.dpr-sourceActions .dpr-back{margin:0;text-decoration:none}
+.dpr-sourceActions .dpr-back:disabled{opacity:.48;cursor:not-allowed}
+@media (max-width:560px){
+  .dpr-sourceOverlay{padding:8px}
+  .dpr-sourceCard{height:calc(100vh - 24px)}
+  .dpr-sourceBody{padding:6px}
+  .dpr-sourceActions{flex-wrap:wrap}
+}
 .dpr-citeCard{display:flex;flex-direction:column;width:min(760px,100%);height:min(580px,calc(100vh - 96px));
   overflow:hidden;background:var(--dsw-alias-settings-card-fill);border:1px solid var(--dsw-alias-border-l3);
   border-radius:var(--dsw-radius-lg);box-shadow:0 18px 50px rgba(0,0,0,.24)}
@@ -9221,6 +9243,113 @@ body[data-ds-dark-theme] .dpr-maintenanceOverlay){
       )
     }
 
+    function SourcePageDialog(props) {
+      const { useState, useEffect } = React
+      const { jobId, page, pageCount, onPage, onClose, t } = props
+      const [failed, setFailed] = useState(false)
+      const url = sourcePageUrl(jobId, page)
+      useEffect(() => {
+        setFailed(false)
+      }, [url])
+      useEffect(() => {
+        const onKeyDown = (event) => {
+          if (event.key === 'Escape') onClose()
+        }
+        window.addEventListener('keydown', onKeyDown)
+        return () => window.removeEventListener('keydown', onKeyDown)
+      }, [onClose])
+      const maxPage = Math.max(0, Number(pageCount) || 0)
+      return React.createElement(
+        'div',
+        {
+          className: 'dpr-sourceOverlay',
+          role: 'dialog',
+          'aria-modal': 'true',
+          'aria-label': t('reader.page') + page,
+          onClick: (event) => {
+            if (event.target === event.currentTarget) onClose()
+          },
+        },
+        React.createElement(
+          'div',
+          {
+            className: 'dpr-sourceCard',
+            onClick: (event) => event.stopPropagation(),
+          },
+          React.createElement(
+            'div',
+            { className: 'dpr-citeHead' },
+            React.createElement(
+              'div',
+              { className: 'dpr-citeHeadMain' },
+              React.createElement('div', { className: 'dpr-citeKicker' }, 'SOURCE PAGE'),
+              React.createElement('div', { className: 'dpr-citeTitle' }, t('reader.page') + page),
+              React.createElement(
+                'div',
+                { className: 'dpr-citeMetaLine' },
+                maxPage ? page + ' / ' + maxPage : '原版页图像',
+              ),
+            ),
+            React.createElement(
+              'button',
+              { type: 'button', className: 'dpr-citeClose', onClick: onClose, 'aria-label': '关闭' },
+              '×',
+            ),
+          ),
+          React.createElement(
+            'div',
+            { className: 'dpr-sourceBody' },
+            failed
+              ? React.createElement(
+                  'div',
+                  { className: 'dpr-sourceError', role: 'alert' },
+                  '这一页原图暂时打不开。源页文件可能缺失，论文正文和批注仍可正常使用。',
+                )
+              : React.createElement('img', {
+                  className: 'dpr-sourceImage',
+                  src: url,
+                  alt: t('reader.page') + page,
+                  onError: () => setFailed(true),
+                }),
+          ),
+          React.createElement(
+            'div',
+            { className: 'dpr-sourceActions' },
+            React.createElement(
+              'button',
+              {
+                type: 'button',
+                className: 'dpr-back',
+                disabled: page <= 1,
+                onClick: () => onPage(page - 1),
+              },
+              '上一页',
+            ),
+            React.createElement(
+              'a',
+              {
+                className: 'dpr-back',
+                href: url,
+                target: '_blank',
+                rel: 'noreferrer',
+              },
+              '在新窗口打开',
+            ),
+            React.createElement(
+              'button',
+              {
+                type: 'button',
+                className: 'dpr-back',
+                disabled: !maxPage || page >= maxPage,
+                onClick: () => onPage(page + 1),
+              },
+              '下一页',
+            ),
+          ),
+        ),
+      )
+    }
+
     function ReaderBody(props) {
       const { useState, useEffect, useRef } = React
       const tabInfo = props.useTabInfo().tab
@@ -9245,6 +9374,7 @@ body[data-ds-dark-theme] .dpr-maintenanceOverlay){
       const [barReady, setBarReady] = useState(false)
       const [citationIndex, setCitationIndex] = useState(null)
       const [citationPreview, setCitationPreview] = useState(null)
+      const [sourcePagePreview, setSourcePagePreview] = useState(0)
       const [langMode, setLangMode] = useState(() => {
         try {
           return (jobId && window.localStorage?.getItem(LANG_STORAGE_PREFIX + jobId)) || 'original'
@@ -9645,6 +9775,18 @@ body[data-ds-dark-theme] .dpr-maintenanceOverlay){
             error.statusCode = response.status
             throw error
           }
+          if (payload.kind === 'invalid') {
+            setCitationPreview((current) =>
+              current?.key === state.key
+                ? {
+                    ...current,
+                    stage: 'error',
+                    error: payload.message || '这条参考文献缺少可解析信息。',
+                  }
+                : current,
+            )
+            return
+          }
           setCitationPreview((current) =>
             current?.key === state.key
               ? {
@@ -9679,6 +9821,16 @@ body[data-ds-dark-theme] .dpr-maintenanceOverlay){
           })
           return
         }
+        const referenceText = String(override.referenceText || reference.text || '').trim()
+        if (!referenceText) {
+          setCitationPreview({
+            stage: 'error',
+            number,
+            reference,
+            error: '参考文献 [' + number + '] 缺少可解析原文，暂时无法打开引用详情。',
+          })
+          return
+        }
         const blockText = String(block.text || '')
         const spanStart = span.originalStart ?? span.start
         const spanEnd = span.originalEnd ?? span.end
@@ -9696,13 +9848,13 @@ body[data-ds-dark-theme] .dpr-maintenanceOverlay){
         }
         const key = [block.id, span.start, number, Date.now()].join(':')
         const baseReferenceKey = [
-          reference.text || '',
+          referenceText,
           reference.doi || '',
           reference.arxiv || '',
           reference.title || '',
         ].join('|')
         const referenceKey = [
-          override.referenceText || reference.text || '',
+          referenceText,
           override.doi || reference.doi || '',
           override.arxiv || reference.arxiv || '',
           override.title || reference.title || '',
@@ -9716,7 +9868,7 @@ body[data-ds-dark-theme] .dpr-maintenanceOverlay){
           baseReferenceKey,
           numbers: span.numbers,
           number,
-          reference: { ...reference, ...override, text: override.referenceText || reference.text },
+          reference: { ...reference, ...override, text: referenceText },
           citing,
           metadata: null,
           version: null,
@@ -9772,6 +9924,14 @@ body[data-ds-dark-theme] .dpr-maintenanceOverlay){
           }
           if (payload.kind === 'none') {
             setCitationPreview({ ...next, stage: 'error', error: payload.message || '没有找到这篇论文。' })
+            return
+          }
+          if (payload.kind === 'invalid') {
+            setCitationPreview({
+              ...next,
+              stage: 'error',
+              error: payload.message || '这条参考文献缺少可解析信息。',
+            })
             return
           }
           if (payload.kind === 'existing') {
@@ -10373,14 +10533,20 @@ body[data-ds-dark-theme] .dpr-maintenanceOverlay){
         setAskStatus('')
       }
       const pageBadge = (page) =>
-        page
+        page && jobId
           ? React.createElement(
-              'a',
+              'button',
               {
+                type: 'button',
                 className: 'dpr-readerPage',
-                href: sourcePageUrl(jobId, page),
-                target: '_blank',
-                rel: 'noreferrer',
+                title: t('reader.page') + page,
+                'aria-label': t('reader.page') + page,
+                onMouseDown: (event) => event.stopPropagation(),
+                onClick: (event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  setSourcePagePreview(Number(page) || 0)
+                },
               },
               t('reader.page') + page,
             )
@@ -11483,6 +11649,16 @@ body[data-ds-dark-theme] .dpr-maintenanceOverlay){
                 onOpenLookup: openCitationLookup,
               })
             : null,
+          sourcePagePreview > 0
+            ? React.createElement(SourcePageDialog, {
+                jobId,
+                page: sourcePagePreview,
+                pageCount: doc?.meta?.pageCount,
+                onPage: (page) => setSourcePagePreview(page),
+                onClose: () => setSourcePagePreview(0),
+                t,
+              })
+            : null,
           glossaryOpen
             ? React.createElement(GlossaryDialog, {
                 entries: glossaryEntries,
@@ -11586,6 +11762,53 @@ body[data-ds-dark-theme] .dpr-maintenanceOverlay){
         'dsh-doraemon-paper-reader: dictionaries',
       )
       const t = ctx.locale.bind(NS)
+
+      ctx.effect(
+        () => {
+          if (typeof window === 'undefined' || typeof document === 'undefined') return () => {}
+          const pluginPaneAt = (event) => {
+            const direct = event.target instanceof Element
+              ? event.target.closest('.dpr-pane')
+              : null
+            if (direct) return direct
+            const x = Number(event.clientX)
+            const y = Number(event.clientY)
+            if (!Number.isFinite(x) || !Number.isFinite(y)) return null
+            return [...document.querySelectorAll('.dpr-pane')].find((element) => {
+              const rect = element.getBoundingClientRect()
+              return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom
+            }) || null
+          }
+          const stop = (event) => {
+            event.preventDefault()
+            event.stopImmediatePropagation()
+          }
+          const onDragEnter = (event) => {
+            if (pluginPaneAt(event)) stop(event)
+          }
+          const onDragOver = (event) => {
+            const pane = pluginPaneAt(event)
+            if (!pane) return
+            const drop = event.target instanceof Element ? event.target.closest('.dpr-drop') : null
+            if (!drop) stop(event)
+          }
+          const onDrop = (event) => {
+            const pane = pluginPaneAt(event)
+            if (!pane) return
+            const drop = event.target instanceof Element ? event.target.closest('.dpr-drop') : null
+            if (!drop) stop(event)
+          }
+          window.addEventListener('dragenter', onDragEnter, true)
+          window.addEventListener('dragover', onDragOver, true)
+          window.addEventListener('drop', onDrop, true)
+          return () => {
+            window.removeEventListener('dragenter', onDragEnter, true)
+            window.removeEventListener('dragover', onDragOver, true)
+            window.removeEventListener('drop', onDrop, true)
+          }
+        },
+        'dsh-doraemon-paper-reader: drag boundary',
+      )
 
       const sendPrompt = async (text, sessionIdArg) => {
         // 批注条按会话渲染，优先用它自己的 sessionId；阅读页调用时再回退到右栏挂载的会话。
@@ -11786,6 +12009,7 @@ body[data-ds-dark-theme] .dpr-maintenanceOverlay){
         citationLookupParams: citationLookupParams,
         mascotArt: mascotArt,
         mascotSprite: mascotSprite,
+        SourcePageDialog: SourcePageDialog,
         HomeBody: HomeBody,
         PathBody: PathBody,
         FileImportBody: FileImportBody,

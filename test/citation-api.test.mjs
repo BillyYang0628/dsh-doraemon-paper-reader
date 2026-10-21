@@ -196,6 +196,33 @@ test('引用解析路由：无合法全文时诚实降级为 metadata-only', asy
   }
 })
 
+test('引用解析：缺失参考文献原文返回业务 invalid，而不是裸 HTTP 400', async () => {
+  const { root, api } = await fixture(async () => ({}))
+  try {
+    const resolve = await call(
+      api.handler,
+      'POST',
+      '/doraemon-paper-reader/api/citations/resolve',
+      { referenceText: '', number: 1, citing: { quote: '[1]' } },
+    )
+    assert.equal(resolve.status, 200)
+    assert.equal(resolve.body.kind, 'invalid')
+    assert.match(resolve.body.message, /参考文献/)
+
+    const analyze = await call(
+      api.handler,
+      'POST',
+      '/doraemon-paper-reader/api/citations/analyze',
+      { referenceText: '', number: 1, citing: { quote: '[1]' } },
+    )
+    assert.equal(analyze.status, 200)
+    assert.equal(analyze.body.kind, 'invalid')
+  } finally {
+    api.dispose()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('引用预览提升：从 citation-previews 移入论文库，并保留可读产物', async () => {
   const { root, api } = await fixture(async () => ({}))
   const previewId = 'preview01'

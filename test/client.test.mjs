@@ -68,6 +68,8 @@ globalThis.window = {
       storage.delete(key)
     },
   },
+  addEventListener() {},
+  removeEventListener() {},
 }
 globalThis.document = fakeDocument
 await import(pathToFileURL(CLIENT_FILE).href)
@@ -937,6 +939,33 @@ test('加载页按 running / done / failed 切换翻书、成功与装死状态'
   )
   assert.equal(failedArt.length, 1)
   assert.equal(findAll(failedTree, (element) => element.props.role === 'alert').length, 1)
+})
+
+test('B1 拖放边界与原版页查看器已接线', async () => {
+  const source = await readFile(CLIENT_FILE, 'utf8')
+  assert.match(source, /window\.addEventListener\('dragenter', onDragEnter, true\)/)
+  assert.match(source, /window\.addEventListener\('dragover', onDragOver, true\)/)
+  assert.match(source, /window\.addEventListener\('drop', onDrop, true\)/)
+  assert.match(source, /dpr-sourceOverlay/)
+  assert.match(source, /dpr-sourceImage/)
+
+  const tree = T.SourcePageDialog({
+    jobId: 'job-b1-test',
+    page: 10,
+    pageCount: 19,
+    onPage: () => {},
+    onClose: () => {},
+    t: tZh,
+  })
+  assert.equal(tree.props.role, 'dialog')
+  assert.match(collectText(tree).join(' '), /原版 p\.10/)
+  const image = findAll(tree, (element) => element.type === 'img')[0]
+  assert.ok(image)
+  assert.equal(
+    image.props.src,
+    'doraemon-paper-reader/api/jobs/job-b1-test/source-pages/page-10.png',
+  )
+  assert.match(image.props.alt, /原版 p\.10/)
 })
 
 test('问答题上下文包：标题/标识符/版本/页码/原文/前后文/图表与 brief', () => {
