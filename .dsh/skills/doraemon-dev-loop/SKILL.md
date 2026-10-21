@@ -11,7 +11,8 @@ description: Use when working inside the dsh-doraemon-paper-reader repository �
 
 - 仓库根：包含 `.git` 的最近祖先（即本仓库目录）。
 - 包名 `dsh-doraemon-paper-reader`，`package.json` 里 `dsh.bundle.patch` 指向 `cordis.patch.yml`。
-- 宿主半区 `src/`（Cordis 插件）；浏览器半区与阅读器页尚未实现。
+- 宿主半区 `src/`（Cordis 插件）；浏览器半区已有主界面与三个页签类型；阅读器页尚未接入 DSH。
+- `工具/pdf-pipeline/` 已有 PDF→MirrorDoc→HTML 提取/重排原型（D-029），是阅读器路线的验证样本。
 
 ## 关键环境变量
 
@@ -43,7 +44,7 @@ dsh plugin --profile dev add link:D:\DSH-Plugins\dsh-doraemon-paper-reader
 |---|---|---|
 | L0 | `npm test`（node --test，纯函数） | 每次改动 |
 | L1 | `dsh --profile headless "<任务>"` | 工具注册、输出、落盘 |
-| L2 | `dsh dev` + 浏览器自动化（Playwright/CDP） | 界面、浮层、页签（待建） |
+| L2 | `dsh dev` + 浏览器自动化（Playwright/CDP） | 界面、浮层、页签（主界面已有 `工具/e2e/main-interface.mjs`） |
 | L3 | DSH SDK（`--profile sdk`）驱动会话 | 端到端（待建） |
 
 联网用例必须能离线跑：真实响应先落盘成 fixture（`test/fixtures/`），不要依赖"今天网络通"。
@@ -52,6 +53,8 @@ dsh plugin --profile dev add link:D:\DSH-Plugins\dsh-doraemon-paper-reader
 
 1. `npm test` 红绿结论 + 未跑项（照实写）；
 2. 界面改动附**并排对比截图**（改动前 / 改动后），存 `工具/gen/<主题>-<YYYYMMDD>/`；
+   **看图和贴图之前先瘦身**：`python 工具/preview-image.py <目录或文件…>`（默认 768px WebP，约 110 KB/张，
+   `--sheet 3` 可顺带拼一张对比表），只把打印出来的预览清单喂 `view_image`——**别把全尺寸生成图直接喂进去**；
 3. 回填 `docs/决定台账.md`（新决定）与 `docs/项目索引.md`（新文件/时效）；
 4. 复制了第三方代码 → 更新 `THIRD_PARTY_NOTICES.md`；
 5. 提交信息用中文，说清"改了什么、为什么"。
@@ -62,3 +65,6 @@ dsh plugin --profile dev add link:D:\DSH-Plugins\dsh-doraemon-paper-reader
 - `Start-Process` 在本机可能被策略拒：起长驻进程优先用会话方式或 `&`。
 - 测试实例用完必须停掉并确认端口释放（日常 web 是 3080，桌面端 Host 是 19387，测试请另选端口）。
 - 学术抓取：出版社页面会 403/303，**撞到就停手换渠道**，不硬刚（详见 `AGENTS.md` §2.4）。
+- **别把全尺寸生成图喂 `view_image`**：DeepSeek `/responses` 无状态、每轮重传整段历史，请求体上限 48 MiB
+  且内联图片计入；一张 2048 图约 4 MiB base64 且永久驻留，约 11 张就把会话顶爆（413，重试 5 次全失败、会话报废，
+  fork 也没用）。看图走 `工具/preview-image.py` 的预览（详见 `AGENTS.md` §2.7 / 决定 D-016）。

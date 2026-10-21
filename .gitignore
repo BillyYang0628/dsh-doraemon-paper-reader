@@ -3,4 +3,7 @@ work/
 *.log
 .DS_Store
 工具/gen/
-工具/gen/
+__pycache__/
+*.pyc
+/UI/
+/dist/
