@@ -36,7 +36,7 @@ node 工具/pdf-pipeline/screenshot.mjs `
   "工具/gen/pdf-html-spike-20261019/shots"
 ```
 
-四篇异形论文的真实回归（Sensors / Plague / PLOS / AIoT，按标题自动找本地 PDF）：
+六篇异形论文的真实回归（Sensors / Plague / PLOS / AIoT，以及本地存在时自动加入的 IoT 算法型 / Twitter 多表综述）：
 
 ```powershell
 npm run test:pdf-regression
@@ -86,8 +86,8 @@ npm run audit:pdf -- <after-dir> --out <audit-dir> --baseline <before-audit.json
 | 参考文献 | 34 条（与样本工程台账一致） |
 | 提取耗时 | 约 6–7 秒（含 200 DPI 裁剪，不含截图） |
 | 图片加载 | 21/21 成功，浏览器 console 0 error |
-| L0 单测 | Python PDF 管线 48/48；Node 171/171 |
-| 四篇回归 | 4/4 `ok:true`，每篇结构审计 0 findings（D-089） |
+| L0 单测 | Python PDF 管线 62/62；Node 171/171 |
+| 回归 | 6/6 selected `ok:true`；所有样本无结构 error，孤立图注以 warning 保留（D-090） |
 
 样本 PDF 与裁剪图只放在 `工具/gen/`（已被 `.gitignore` 忽略），不随插件发布。
 
