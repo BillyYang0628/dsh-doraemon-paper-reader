@@ -21,7 +21,7 @@ import re
 import sys
 from collections import Counter
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from PIL import Image, ImageChops, ImageDraw, ImageStat
 
@@ -245,13 +245,17 @@ def split_runin_headings(blocks: List[Dict[str, Any]], lines: List[Dict[str, Any
         if not first:
             out.append(block)
             continue
+        # A single source line cannot itself contain both a run-in heading and
+        # its following body. The previous implementation borrowed the first
+        # line of the *next* block as the comparison size, which promoted the
+        # final paragraph line before a real heading into a false heading.
+        if len(source_ids) < 2:
+            out.append(block)
+            continue
         first_text = normalize_text(first.get("text"))
         first_size = float(first.get("size") or 0)
         text = normalize_text(block.get("text"))
         second = by_id.get(source_ids[1]) if len(source_ids) > 1 else None
-        if second is None and block_index + 1 < len(blocks):
-            following_ids = blocks[block_index + 1].get("sourceIds") or []
-            second = by_id.get(str(following_ids[0])) if following_ids else None
         second_size = float((second or {}).get("size") or 0)
         glued = len(source_ids) > 1
         starts_with_heading = text.startswith(first_text) if glued else text == first_text
@@ -269,9 +273,8 @@ def split_runin_headings(blocks: List[Dict[str, Any]], lines: List[Dict[str, Any
             continue
         rest = text[len(first_text) :].strip() if glued else ""
         if len(rest) < 20:
-            if len(source_ids) > 1:
-                out.append(block)
-                continue
+            out.append(block)
+            continue
         out.append({
             **block,
             "type": "heading",
@@ -292,7 +295,34 @@ def split_runin_headings(blocks: List[Dict[str, Any]], lines: List[Dict[str, Any
     return out, splits
 
 
-def merge_continuations(blocks: List[Dict[str, Any]]) -> int:
+def complete_terms_from_lines(lines: List[Dict[str, Any]]) -> set[str]:
+    """Collect complete tokens used to disambiguate line-end hyphenation."""
+    terms: set[str] = set()
+    for line in lines:
+        text = normalize_text(line.get("text"))
+        trailing = re.search(r"([A-Za-z]+)-$", text)
+        for match in re.finditer(r"(?<![A-Za-z])([A-Za-z]+(?:-[A-Za-z]+)*)(?![A-Za-z])", text):
+            token = match.group(1).lower()
+            if trailing and token == trailing.group(1).lower() and match.end() == len(text) - 1:
+                continue
+            terms.add(token)
+    return terms
+
+
+def _remove_line_hyphen(stem: str, prefix: str, complete_terms: set[str]) -> bool:
+    joined = (stem + prefix).lower()
+    lexical = (stem + "-" + prefix).lower()
+    if joined in complete_terms:
+        return True
+    if lexical in complete_terms:
+        return False
+    return False
+
+
+def merge_continuations(
+    blocks: List[Dict[str, Any]],
+    complete_terms: Optional[set[str]] = None,
+) -> int:
     """Join paragraph fragments split by a page or column boundary.
 
     A wrapped fragment is recognisable without images: the previous block
@@ -329,8 +359,24 @@ def merge_continuations(blocks: List[Dict[str, Any]]) -> int:
                     and not re.search(r"[.!?][\"'”’)]?$", previous_text)
                     and re.match(r"^[a-z0-9(]", next_text)
                 ):
-                    separator = "" if previous_text.endswith("-") else " "
-                    block["text"] = previous_text + separator + next_text
+                    if previous_text.endswith("-"):
+                        stem_match = re.search(r"([A-Za-z]+)-$", previous_text)
+                        prefix_match = re.match(r"([A-Za-z0-9]+)", next_text)
+                        if (
+                            stem_match
+                            and prefix_match
+                            and complete_terms is not None
+                            and _remove_line_hyphen(
+                                stem_match.group(1),
+                                prefix_match.group(1),
+                                complete_terms,
+                            )
+                        ):
+                            block["text"] = previous_text[:-1] + next_text
+                        else:
+                            block["text"] = previous_text + next_text
+                    else:
+                        block["text"] = previous_text + " " + next_text
                     block["sourceIds"] = list(block.get("sourceIds") or []) + list(candidate.get("sourceIds") or [])
                     if block.get("bbox") and candidate.get("bbox"):
                         left = min(float(block["bbox"][0]), float(candidate["bbox"][0]))
@@ -631,10 +677,14 @@ def cleanup_noise(blocks: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], i
         if not text:
             removed += 1
             continue
-        if block.get("type") == "paragraph" and re.match(
+        if (
+            block.get("type") == "paragraph"
+            and int(block.get("page") or 0) == 1
+            and re.match(
             r"^(?:Academic Editor:|Received\s+\w+\s+\d+,|Copyright:|Funding:|"
             r"Competing Interests:|\*\s*To whom correspondence)",
             text,
+            )
         ):
             # Journal metadata in the first-page sidebar is not article prose.
             removed += 1
@@ -866,6 +916,7 @@ def main() -> int:
         1
         for block in blocks
         if block.get("type") == "paragraph"
+        and int(block.get("page") or 0) == 1
         and re.match(
             r"^(?:Academic Editor:|Received\s+\w+\s+\d+,|Copyright:|Funding:|"
             r"Competing Interests:|\*\s*To whom correspondence)",
@@ -891,9 +942,10 @@ def main() -> int:
     code_blocks = mark_code(blocks)
     blocks, equation_limits = merge_equation_limits(blocks)
     blocks = order_blocks_by_column(blocks, lines)
+    complete_terms = complete_terms_from_lines(lines)
     continuations_merged = 0
     for _ in range(6):
-        blocks, merged_this_pass = merge_continuations(blocks)
+        blocks, merged_this_pass = merge_continuations(blocks, complete_terms)
         continuations_merged += merged_this_pass
         if merged_this_pass == 0:
             break
@@ -972,9 +1024,22 @@ def main() -> int:
     (job / "layout-report.json").write_text(json.dumps(audit, ensure_ascii=False, indent=2), encoding="utf-8")
     report_path = job / "report.md"
     if report_path.exists():
+        final_counts = Counter(str(block.get("type") or "unknown") for block in blocks)
+        final_metrics = {
+            "blocks": len(blocks),
+            "blockTypes": dict(sorted(final_counts.items())),
+            "paragraphs": final_counts.get("paragraph", 0),
+            "headings": final_counts.get("heading", 0),
+            "abstractChars": len(normalize_text((doc.get("meta") or {}).get("abstract"))),
+            "references": final_counts.get("reference", 0),
+            "tables": final_counts.get("table", 0),
+            "algorithms": final_counts.get("algorithm", 0),
+        }
+        original_report = report_path.read_text(encoding="utf-8")
+        original_report = original_report.split("## 最终 MirrorDoc", 1)[0].rstrip()
         report_path.write_text(
-            report_path.read_text(encoding="utf-8")
-            + "\n## 二次格式复核\n"
+            original_report
+            + "\n\n## 二次格式复核\n"
             + f"- tables: {len(audit['tables'])}\n"
             + f"- supporting splits: {supporting_splits}\n"
             + f"- code blocks: {code_blocks}\n"
@@ -984,7 +1049,17 @@ def main() -> int:
             + f"- logical references: {order_audit.get('first')}–{order_audit.get('last')} ({order_audit.get('numbered')} numbered)\n"
             + f"- text quality warnings: {len(text_issues)}\n"
             + f"- warnings: {json.dumps(audit['warnings'], ensure_ascii=False)}\n"
-            + f"- visual audit: {audit['visualAudit']}\n",
+            + f"- visual audit: {audit['visualAudit']}\n"
+            + "\n## 最终 MirrorDoc\n"
+            + f"<!-- final-mirrordoc {json.dumps(final_metrics, ensure_ascii=False, separators=(',', ':'))} -->\n"
+            + f"- blocks: {final_metrics['blocks']}\n"
+            + f"- block types: {json.dumps(final_metrics['blockTypes'], ensure_ascii=False)}\n"
+            + f"- paragraphs: {final_metrics['paragraphs']}\n"
+            + f"- headings: {final_metrics['headings']}\n"
+            + f"- abstract characters: {final_metrics['abstractChars']}\n"
+            + f"- references: {final_metrics['references']}\n"
+            + f"- tables: {final_metrics['tables']}\n"
+            + f"- algorithms: {final_metrics['algorithms']}\n",
             encoding="utf-8",
         )
     progress(f"复核完成：{len(audit['tables'])} 个表，{supporting_splits} 个 Supporting 分块")

@@ -10770,6 +10770,38 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
             bubbleFor(block),
           )
         }
+        if (block.type === 'algorithm') {
+          const caption = String(block.caption || block.text || '')
+          const algorithmText = String(block.algorithmText || '')
+          return React.createElement(
+            'figure',
+            {
+              key: id,
+              id,
+              className: 'dpr-readerFigure dpr-readerAlgorithm',
+              'data-block-id': id,
+              'data-page': block.page,
+              'data-section': block.section || '',
+              'data-kind': 'algorithm',
+              'data-label': block.label || 'Algorithm',
+            },
+            React.createElement(
+              'figcaption',
+              null,
+              String(caption).toLowerCase().startsWith(String(block.label || 'Algorithm').toLowerCase())
+                ? null
+                : React.createElement('strong', null, (block.label || 'Algorithm') + ' '),
+              caption,
+              pageBadge(block.page),
+              bubbleFor(block),
+            ),
+            React.createElement(
+              'pre',
+              { className: 'dpr-readerCode', tabIndex: 0 },
+              React.createElement('code', null, algorithmText),
+            ),
+          )
+        }
         if (block.type === 'figure' || block.type === 'table' || block.type === 'equation') {
           // Equations are preserved as visual crops. Their extracted text is
           // frequently a pseudo-glyph stream and must not be shown as caption.

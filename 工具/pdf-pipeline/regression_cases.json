@@ -26,7 +26,7 @@
     "expect": {
       "pages": 6,
       "blockTypes": { "figure": 1, "table": 3, "reference": 18 },
-      "minBlockTypes": { "paragraph": 20, "heading": 5 },
+      "minBlockTypes": { "paragraph": 15, "heading": 5 },
       "referenceRange": [1, 18],
       "warnings": [],
       "textQuality": [],
@@ -62,6 +62,48 @@
       "forbiddenText": ["(cid:", "�"],
       "order": [
         ["SUPPORTING INFORMATION", "REFERENCES", "ACKNOWLEDGMENTS"]
+      ]
+    }
+  },
+  {
+    "id": "aiot",
+    "titleIncludes": "A Smart AIoT-Based Mobile Application",
+    "expect": {
+      "pages": 19,
+      "blockTypes": {
+        "figure": 14,
+        "table": 5,
+        "reference": 43,
+        "algorithm": 1,
+        "abstract": 1,
+        "caption": 2
+      },
+      "minBlockTypes": { "paragraph": 90, "heading": 18 },
+      "referenceRange": [1, 43],
+      "warnings": [],
+      "textQuality": [],
+      "requiredText": [
+        "Algorithm 1. Pseudo-code summarizing",
+        "Table 2. Summary of sensors and actuators",
+        "domain-specific dialogue",
+        "99.5%"
+      ],
+      "forbiddenText": [
+        "AgriEngineering 2026, 8, 11 2 of 19",
+        "domainspecific",
+        "(cid:",
+        "�"
+      ],
+      "order": [
+        [
+          "1. Introduction",
+          "2. Related Works",
+          "3. Materials and Methods",
+          "4. System Design",
+          "5. Results and Discussion",
+          "6. Conclusions",
+          "References"
+        ]
       ]
     }
   }

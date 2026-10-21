@@ -87,6 +87,21 @@ def render_block(block: Dict[str, Any]) -> str:
         return ""
     if kind == "keywords":
         return ""
+    if kind == "algorithm":
+        label = esc(block.get("label") or "Algorithm")
+        caption = esc(block.get("caption") or text)
+        algorithm_text = esc(block.get("algorithmText") or "")
+        label_html = (
+            ""
+            if caption.lower().startswith(label.lower())
+            else f'<span class="asset-label">{label}</span>'
+        )
+        return (
+            f'<figure id="{block_id}" class="algorithm">'
+            f"<figcaption>{label_html}{caption}</figcaption>"
+            f'<pre class="code"><code>{algorithm_text}</code></pre>'
+            f"{page_badge(block)}{locator(block)}</figure>"
+        )
     if kind in ("figure", "table", "equation"):
         return render_asset(block)
     if kind == "caption":

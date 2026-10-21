@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 import unittest
+import json
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -38,6 +40,8 @@ from reconcile_layout import (  # noqa: E402
     text_quality_issues,
 )
 from ai_order_audit import _extract_json, build_outline  # noqa: E402
+from audit_structure import build_report  # noqa: E402
+from render_html import render_html  # noqa: E402
 
 
 def char(text: str, x0: float, x1: float, top: float = 0.0, size: float = 10.0, font: str = "Test-Roma"):
@@ -116,6 +120,67 @@ class ClassificationTests(unittest.TestCase):
         self.assertEqual(classify_line(self.line("Background. Sharing data.", top=160), 9.0), "abstract")
         self.assertEqual(classify_line(self.line("INTRODUCTION", size=11.0), 9.0), "heading")
         self.assertEqual(classify_line(self.line("DOC)", size=11.0), 9.0), "prose")
+
+    def test_standalone_abstract_title_is_structural(self):
+        self.assertEqual(
+            classify_line(self.line("Abstract", top=250, bold=True), 10.0),
+            "abstract",
+        )
+
+    def test_algorithm_sentinels_are_not_headings(self):
+        self.assertEqual(
+            classify_line(self.line("BEGIN", top=318, bold=True), 10.0),
+            "prose",
+        )
+        self.assertEqual(
+            classify_line(self.line("END", top=500, bold=True), 10.0),
+            "prose",
+        )
+
+    def test_reconstruction_dot_noise_is_furniture(self):
+        self.assertEqual(
+            classify_line(self.line("........................", top=500), 10.0),
+            "furniture",
+        )
+
+    def test_generic_page_varying_running_head_is_furniture(self):
+        lines = [
+            self.line(
+                "AgriEngineering 2026, 8, 11 2 of 19",
+                page=2,
+                top=36,
+                bottom=46,
+                size=8,
+                columnScope="full",
+            ),
+            self.line(
+                "AgriEngineering 2026, 8, 11 3 of 19",
+                page=3,
+                top=36,
+                bottom=46,
+                size=8,
+                columnScope="full",
+            ),
+            self.line(
+                "AgriEngineering 2026, 8, 11 4 of 19",
+                page=4,
+                top=36,
+                bottom=46,
+                size=8,
+                columnScope="full",
+            ),
+            self.line(
+                "5.1. Plant Disease Detection Results",
+                page=5,
+                top=74,
+                bottom=84,
+                size=10,
+                columnScope="full",
+            ),
+        ]
+        annotate_roles(lines)
+        self.assertEqual([line["role"] for line in lines[:3]], ["furniture"] * 3)
+        self.assertEqual(lines[3]["role"], "heading")
 
     def test_reference_entry_is_not_a_heading_after_references_start(self):
         lines = [
@@ -207,6 +272,27 @@ class ClassificationTests(unittest.TestCase):
             "top": 680.0,
             "bottom": 688.0,
             "size": 8.0,
+        }
+        self.assertTrue(_is_caption_continuation(caption, tail))
+
+    def test_caption_continuation_accepts_acronym_after_existing_hyphen(self):
+        caption = {
+            "page": 12,
+            "role": "caption",
+            "text": "Table 3. Classification report (MobileViT-",
+            "x0": 166.0,
+            "top": 74.0,
+            "bottom": 83.0,
+            "size": 9.0,
+        }
+        tail = {
+            "page": 12,
+            "role": "prose",
+            "text": "XXSmall).",
+            "x0": 166.0,
+            "top": 87.0,
+            "bottom": 96.0,
+            "size": 9.0,
         }
         self.assertTrue(_is_caption_continuation(caption, tail))
 
@@ -344,6 +430,89 @@ class MirrorDocTests(unittest.TestCase):
         self.assertEqual(doc["version"]["kind"], "unknown")
         self.assertEqual(doc["outline"][0]["title"], "1. Introduction")
 
+    def test_algorithm_caption_and_steps_stay_one_structured_block(self):
+        def line(ident, text, top, role, bold=False):
+            return {
+                "id": ident,
+                "page": 10,
+                "role": role,
+                "text": text,
+                "columnScope": "full",
+                "x0": 172.0,
+                "x1": 520.0,
+                "top": top,
+                "bottom": top + 10,
+                "size": 10.0,
+                "bold": bold,
+            }
+
+        lines = [
+            line("caption", "Algorithm 1. IoT control loop.", 270, "caption", True),
+            line("begin", "BEGIN", 318, "prose", True),
+            line("step1", "1: Initialize sensors and actuators", 332, "prose", True),
+            line("step2", "2: WHILE TRUE DO", 346, "prose", True),
+            line("step3", "3: Upload sensor data to Firebase", 360, "prose", True),
+            line("endwhile", "4: END WHILE", 374, "prose", True),
+            line("end", "END", 388, "prose", True),
+        ]
+        blocks = build_blocks(lines, [])
+        self.assertEqual([block["type"] for block in blocks], ["algorithm"])
+        algorithm = blocks[0]
+        self.assertEqual(algorithm["label"], "Algorithm 1")
+        self.assertEqual([step["number"] for step in algorithm["steps"]], [1, 2, 3, 4])
+        self.assertEqual([step["depth"] for step in algorithm["steps"]], [0, 0, 1, 0])
+        self.assertIn("\n", algorithm["algorithmText"])
+        self.assertNotIn("BEGIN", algorithm["algorithmText"])
+        self.assertEqual(algorithm["sourceIds"], [item["id"] for item in lines])
+
+    def test_citation_link_tail_does_not_start_a_new_reference(self):
+        def line(ident, text, top, role):
+            return {
+                "id": ident,
+                "page": 18,
+                "role": role,
+                "text": text,
+                "columnScope": "full",
+                "x0": 60,
+                "x1": 550,
+                "top": top,
+                "bottom": top + 10,
+                "size": 9,
+                "bold": False,
+            }
+
+        lines = [
+            line("refs", "References", 70, "references_heading"),
+            line("r5", "5. Demilie, W.B. Plant disease detection,", 90, "prose"),
+            line("link", "5. [CrossRef]", 103, "prose"),
+            line("r6", "6. Awaisi, K.S. A Survey.", 116, "prose"),
+        ]
+        blocks = build_blocks(lines, [])
+        references = [block for block in blocks if block["type"] == "reference"]
+        self.assertEqual(len(references), 2)
+        self.assertIn("[CrossRef]", references[0]["text"])
+
+    def test_standalone_html_renders_algorithm_steps(self):
+        doc = {
+            "meta": {"title": "T", "pageCount": 1},
+            "version": {},
+            "coverage": {},
+            "outline": [],
+            "blocks": [{
+                "id": "b0000",
+                "type": "algorithm",
+                "page": 1,
+                "label": "Algorithm 1",
+                "caption": "Algorithm 1. Control loop.",
+                "text": "Algorithm 1. Control loop.",
+                "algorithmText": "1: Start\n2: Stop",
+            }],
+        }
+        html = render_html(doc)
+        self.assertIn('class="algorithm"', html)
+        self.assertIn("1: Start", html)
+        self.assertNotIn("Algorithm 1</span>Algorithm 1.", html)
+
 
 class ReconcileTests(unittest.TestCase):
     def test_normalize_text_collapses_pdf_whitespace(self):
@@ -367,6 +536,20 @@ class ReconcileTests(unittest.TestCase):
         self.assertEqual(out[0]["text"], "Author Contributions")
         self.assertEqual(out[1]["text"], "Conceived and designed the experiments: HP.")
 
+    def test_single_source_paragraph_is_never_promoted_before_next_heading(self):
+        lines = [
+            {"id": "p", "text": "Accordingly, the result continues", "size": 10.0, "x0": 1, "top": 1, "x1": 2, "bottom": 2},
+            {"id": "h", "text": "2. Results", "size": 12.0, "x0": 1, "top": 3, "x1": 2, "bottom": 4},
+        ]
+        blocks = [
+            {"type": "paragraph", "text": "Accordingly, the result continues", "sourceIds": ["p"]},
+            {"type": "heading", "text": "2. Results", "sourceIds": ["h"]},
+        ]
+        out, splits = split_runin_headings(blocks, lines)
+        self.assertEqual(splits, 0)
+        self.assertEqual([block["type"] for block in out], ["paragraph", "heading"])
+
+
     def test_paragraph_continuation_is_merged_without_fake_gap(self):
         blocks = [
             {"type": "paragraph", "section": "RESULTS", "text": "The association remained significant in this", "sourceIds": ["a"]},
@@ -377,6 +560,24 @@ class ReconcileTests(unittest.TestCase):
         self.assertEqual(merged, 1)
         self.assertEqual(out[0]["text"], "The association remained significant in this lower-profile subset of trials.")
         self.assertEqual(len(out), 2)
+
+    def test_paragraph_continuation_removes_end_of_line_hyphen(self):
+        blocks = [
+            {"type": "paragraph", "section": "RESULTS", "text": "The model is driv-", "sourceIds": ["a"]},
+            {"type": "paragraph", "section": "RESULTS", "text": "ing better results.", "sourceIds": ["b"]},
+        ]
+        out, merged = merge_continuations(blocks, {"driving"})
+        self.assertEqual(merged, 1)
+        self.assertEqual(out[0]["text"], "The model is driving better results.")
+
+    def test_paragraph_continuation_preserves_lexical_compound_hyphen(self):
+        blocks = [
+            {"type": "paragraph", "section": "RESULTS", "text": "It works for domain-", "sourceIds": ["a"]},
+            {"type": "paragraph", "section": "RESULTS", "text": "specific applications.", "sourceIds": ["b"]},
+        ]
+        out, merged = merge_continuations(blocks, {"domain-specific"})
+        self.assertEqual(merged, 1)
+        self.assertEqual(out[0]["text"], "It works for domain-specific applications.")
 
     def test_logical_order_puts_all_references_before_acknowledgments(self):
         blocks = [
@@ -508,6 +709,105 @@ class ReconcileTests(unittest.TestCase):
         self.assertEqual([block["type"] for block in ordered], ["paragraph", "paragraph", "table"])
         self.assertEqual(ordered[0]["column"], "left")
         self.assertEqual(ordered[1]["column"], "right")
+
+
+class StructureAuditTests(unittest.TestCase):
+    def test_audit_is_clean_for_fully_assigned_simple_document(self):
+        with tempfile.TemporaryDirectory() as raw:
+            job = Path(raw)
+            lines = [{
+                "id": "p001-a",
+                "page": 1,
+                "role": "prose",
+                "text": "A complete body paragraph.",
+                "top": 100,
+                "size": 10,
+            }, {
+                "id": "p001-dots",
+                "page": 1,
+                "role": "prose",
+                "text": "........................",
+                "top": 120,
+                "size": 10,
+            }]
+            blocks = [{
+                "id": "b0000",
+                "type": "paragraph",
+                "text": "A complete body paragraph.",
+                "page": 1,
+                "sourceIds": ["p001-a"],
+            }]
+            (job / "lines.json").write_text(json.dumps(lines), encoding="utf-8")
+            (job / "mirrordoc.json").write_text(
+                json.dumps({
+                    "meta": {"title": "T", "pageCount": 1, "abstract": ""},
+                    "blocks": blocks,
+                }),
+                encoding="utf-8",
+            )
+            (job / "layout-report.json").write_text(
+                json.dumps({"warnings": [], "keyInfo": {}}),
+                encoding="utf-8",
+            )
+            metrics = {
+                "blocks": 1,
+                "paragraphs": 1,
+                "blockTypes": {"paragraph": 1},
+            }
+            (job / "report.md").write_text(
+                "<!-- final-mirrordoc "
+                + json.dumps(metrics, separators=(",", ":"))
+                + " -->\n",
+                encoding="utf-8",
+            )
+            report = build_report(job)
+            self.assertTrue(report["ok"])
+            self.assertEqual(report["findings"], [])
+
+    def test_audit_flags_running_head_leaking_into_body(self):
+        with tempfile.TemporaryDirectory() as raw:
+            job = Path(raw)
+            lines = [
+                {
+                    "id": "p002-h",
+                    "page": 2,
+                    "role": "prose",
+                    "text": "AgriEngineering 2026, 8, 11 2 of 19",
+                    "top": 36,
+                    "size": 8,
+                },
+                {
+                    "id": "p002-b",
+                    "page": 2,
+                    "role": "prose",
+                    "text": "Body.",
+                    "top": 75,
+                    "size": 10,
+                },
+            ]
+            blocks = [{
+                "id": "b0000",
+                "type": "paragraph",
+                "text": "AgriEngineering 2026, 8, 11 2 of 19 Body.",
+                "page": 2,
+                "sourceIds": ["p002-h", "p002-b"],
+            }]
+            (job / "lines.json").write_text(json.dumps(lines), encoding="utf-8")
+            (job / "mirrordoc.json").write_text(
+                json.dumps({"meta": {"pageCount": 2}, "blocks": blocks}),
+                encoding="utf-8",
+            )
+            (job / "layout-report.json").write_text("{}", encoding="utf-8")
+            (job / "report.md").write_text(
+                "<!-- final-mirrordoc "
+                + json.dumps({"blocks": 1, "paragraphs": 1}, separators=(",", ":"))
+                + " -->\n",
+                encoding="utf-8",
+            )
+            report = build_report(job)
+            rules = {item["rule"] for item in report["findings"]}
+            self.assertIn("running-head.unclassified", rules)
+            self.assertFalse(report["ok"])
 
 
 if __name__ == "__main__":

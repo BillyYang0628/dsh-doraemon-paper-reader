@@ -106,6 +106,7 @@ def run_case(case: Dict[str, Any], pdf: Path, out_root: Path) -> Dict[str, Any]:
     errors: List[str] = []
     extractor = HERE / "extract_pdf.py"
     reconciler = HERE / "reconcile_layout.py"
+    auditor = HERE / "audit_structure.py"
     subprocess.run(
         [sys.executable, str(extractor), str(pdf), "--out", str(case_dir), "--dpi", "150"],
         check=True,
@@ -116,8 +117,23 @@ def run_case(case: Dict[str, Any], pdf: Path, out_root: Path) -> Dict[str, Any]:
         check=True,
         cwd=HERE.parent.parent,
     )
+    audit_dir = case_dir / "structure-audit"
+    subprocess.run(
+        [
+            sys.executable,
+            str(auditor),
+            str(case_dir),
+            "--out",
+            str(audit_dir),
+            "--fail-on",
+            "never",
+        ],
+        check=True,
+        cwd=HERE.parent.parent,
+    )
     doc = load_json(case_dir / "mirrordoc.json")
     layout = load_json(case_dir / "layout-report.json")
+    structure_audit = load_json(audit_dir / "audit-report.json")
     blocks = doc.get("blocks") or []
     expect = case.get("expect") or {}
 
@@ -195,6 +211,17 @@ def run_case(case: Dict[str, Any], pdf: Path, out_root: Path) -> Dict[str, Any]:
         if len(positions) == len(order_group) and positions != sorted(positions):
             errors.append("heading order wrong: " + json.dumps(order_group, ensure_ascii=False))
 
+    audit_findings = structure_audit.get("findings") or []
+    for item in audit_findings:
+        errors.append(
+            "structure audit: "
+            + str(item.get("rule"))
+            + " / "
+            + str(item.get("message"))
+            + " / "
+            + json.dumps(item.get("evidence") or {}, ensure_ascii=False)
+        )
+
     return {
         "id": case["id"],
         "source": str(pdf),
@@ -203,6 +230,11 @@ def run_case(case: Dict[str, Any], pdf: Path, out_root: Path) -> Dict[str, Any]:
         "blockTypes": counts,
         "references": len(references),
         "warnings": warnings,
+        "structureAudit": {
+            "path": str(audit_dir / "audit-report.json"),
+            "ok": bool(structure_audit.get("ok")),
+            "findings": len(audit_findings),
+        },
         "errors": errors,
         "ok": not errors,
     }

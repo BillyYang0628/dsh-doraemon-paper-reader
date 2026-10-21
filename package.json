@@ -22,6 +22,7 @@
     "icon.svg",
     "工具/pdf-pipeline/extract_pdf.py",
     "工具/pdf-pipeline/reconcile_layout.py",
+    "工具/pdf-pipeline/audit_structure.py",
     "工具/pdf-pipeline/render_html.py",
     "工具/pdf-pipeline/ai_order_audit.py",
     "工具/html-pipeline/extract_html.py",
@@ -48,6 +49,7 @@
   "scripts": {
     "test": "node --test",
     "test:pdf-regression": "python 工具/pdf-pipeline/regression_check.py --keep-going",
+    "audit:pdf": "python 工具/pdf-pipeline/audit_structure.py",
     "setup:python": "node 工具/dev/setup-python.mjs",
     "benchmark:pdf": "node 工具/dev/benchmark-pdf.mjs",
     "verify": "npm test && node 工具/check-doc-links.mjs && npm run test:pdf-regression",

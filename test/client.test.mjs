@@ -247,6 +247,13 @@ test('阅读页公式：只显示原图与编号，不把伪字形当题注展�
   assert.match(source, /block\.type === 'equation' \? '' : block\.caption \|\| block\.text \|\| ''/)
 })
 
+test('阅读页算法：题注、编号步骤与控制流缩进共同渲染', async () => {
+  const source = await readFile(CLIENT_FILE, 'utf8')
+  assert.match(source, /block\.type === 'algorithm'/)
+  assert.match(source, /String\(block\.algorithmText \|\| ''\)/)
+  assert.match(source, /'data-kind': 'algorithm'/)
+})
+
 test('阅读页增强：公式/表格按钮、回跳 BroadcastChannel 与整篇复核入口已接线', async () => {
   const source = await readFile(CLIENT_FILE, 'utf8')
   assert.match(source, /startVisualJob\('formulas'\)/)

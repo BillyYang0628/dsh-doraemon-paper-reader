@@ -68,9 +68,17 @@ CAPTION_RE = re.compile(
 HEADING_RE = re.compile(r"^(?P<num>\d+(?:\.\d+)*)\.?\s+(?P<title>[A-Z][^\n]{0,140})$")
 EQUATION_RE = re.compile(r"\((?P<num>\d+[a-zA-Z]?)\)\s*$")
 REFERENCE_ENTRY_RE = re.compile(r"^(?:\[(?P<bracket>\d+)\]|(?P<plain>\d+)\.)\s+")
+REFERENCE_LINK_ONLY_RE = re.compile(
+    r"^\d+\.\s+\[(?:CrossRef|PubMed|PubMed Central|Google Scholar|CAS|"
+    r"ADS|INSPEC|MathSciNet|Semantic Scholar)\]\s*$",
+    re.I,
+)
 DOI_RE = re.compile(r"10\.\d{4,9}/[-._;()/:A-Z0-9]+", re.I)
 ARXIV_RE = re.compile(r"arXiv[:\s]*(\d{4}\.\d{4,5}(?:v\d+)?)", re.I)
 MATH_LIMIT_RE = re.compile(r"^[A-Za-z0-9\s∈∑√,;:+\-−=<>≤≥\[\](){}|.!_'′″]+$")
+PAGE_TOTAL_RE = re.compile(r"\b\d+\s+(?:of|/)\s+\d+\b", re.I)
+ALGORITHM_BOUNDARY_RE = re.compile(r"^(?:BEGIN|END(?:\s+(?:IF|WHILE))?)$", re.I)
+ALGORITHM_STEP_RE = re.compile(r"^\s*(?P<number>\d{1,4})\s*[:.]\s*(?P<text>.+)$")
 
 
 def clean_text(value: str) -> str:
@@ -474,6 +482,13 @@ def estimate_body_size(lines: Iterable[Dict[str, Any]]) -> float:
     return _median(sizes) or 9.0
 
 
+def _furniture_signature(text: str) -> str:
+    """Normalize page-varying running heads without assuming a journal name."""
+    value = clean_text(text).lower()
+    value = re.sub(r"\b\d+(?:[.,]\d+)*\b", "#", value)
+    return re.sub(r"\s+", " ", value).strip(" .-|")
+
+
 def classify_line(line: Dict[str, Any], body_size: float) -> str:
     text = line["text"]
     page = int(line["page"])
@@ -494,13 +509,19 @@ def classify_line(line: Dict[str, Any], body_size: float) -> str:
         re.I,
     ):
         return "furniture"
-    if page > 1 and top < 85 and re.match(r"^(Sensors|Journal|Proceedings|IEEE|ACM)\b", text):
+    if page > 1 and top < 85 and re.match(
+        r"^(Sensors|Journal|Proceedings|IEEE|ACM|Nature|Science|Elsevier)\b",
+        text,
+        re.I,
+    ):
         return "furniture"
     if bottom > page_height - 55 and re.match(r"^(?:\d+\s*(?:of\s*\d+)?|https?://)", text):
         return "furniture"
     if bottom > page_height - 55 and size <= 8.5:
         return "furniture"
     if re.match(r"^\d+\s+of\s+\d+$", text):
+        return "furniture"
+    if re.fullmatch(r"[.·•…\s]+", text):
         return "furniture"
 
     # On page 1, a *narrow* left sidebar is citation/copyright metadata. In a
@@ -529,7 +550,7 @@ def classify_line(line: Dict[str, Any], body_size: float) -> str:
         or re.search(r"\b(?:Received|Accepted|Published|Academic Editor)\b", text)
     ):
         return "meta"
-    if re.match(r"^Abstract\s*:", text, re.I):
+    if re.fullmatch(r"Abstract\s*:?", text, re.I) or re.match(r"^Abstract\s*:", text, re.I):
         return "abstract"
     if (
         page == 1
@@ -541,12 +562,16 @@ def classify_line(line: Dict[str, Any], body_size: float) -> str:
         return "keywords"
     if re.match(r"^(References|Bibliography)\s*$", text, re.I):
         return "references_heading"
+    # Algorithm sentinels are structural content, never document headings.
+    if ALGORITHM_BOUNDARY_RE.fullmatch(text):
+        return "prose"
     if (
         len(text) <= 60
         and len(text.split()) <= 8
         and text.isupper()
         and re.fullmatch(r"[A-Z][A-Z0-9 &/.\-]{2,}", text)
         and size >= body_size * 0.95
+        and not re.search(r"\b(?:and|or|but|nor|of|the|to|for|in|on|with|by|from|as)\s*$", text, re.I)
     ):
         return "heading"
     if HEADING_RE.match(text) and len(text) <= 140 and (size >= body_size * 0.95 or line["bold"]):
@@ -562,6 +587,24 @@ def annotate_roles(lines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     body_size = estimate_body_size(lines)
     for line in lines:
         line["role"] = classify_line(line, body_size)
+    # Journal names are not a reliable whitelist. Detect page-varying running
+    # heads by their normalized repeated signature or an explicit "N of M"
+    # marker near the top edge.
+    running_candidates = [
+        line
+        for line in lines
+        if int(line["page"]) > 1
+        and float(line["top"]) < 90
+        and len(clean_text(line["text"])) <= 100
+        and float(line["size"]) <= body_size * 1.02
+        and line["role"] not in ("title", "caption")
+    ]
+    signatures = Counter(_furniture_signature(line["text"]) for line in running_candidates)
+    for line in running_candidates:
+        text = clean_text(line["text"])
+        signature = _furniture_signature(text)
+        if PAGE_TOTAL_RE.search(text) or signatures.get(signature, 0) >= 3:
+            line["role"] = "furniture"
     # Everything between the title and the abstract on page 1 is author /
     # affiliation metadata, even when it has no email address.
     first_page = [line for line in lines if line["page"] == 1]
@@ -784,6 +827,13 @@ def _is_caption_continuation(previous: Dict[str, Any], candidate: Dict[str, Any]
     gap = float(candidate["top"]) - float(previous["bottom"])
     size = max(float(previous["size"]), 1.0)
     starts_lower = text[:1].islower() or text[:1] in "(（"
+    # A caption split at an existing hyphen may continue with an acronym or
+    # model name (``(MobileViT-`` / ``XXSmall).``). The shared x-position and
+    # tight leading are stronger evidence than capitalization in this case.
+    previous_text = clean_text(previous.get("text", ""))
+    if previous_text.endswith("-") and gap <= 1.7 * size:
+        if abs(float(candidate["x0"]) - float(previous["x0"])) <= 40:
+            return True
     if starts_lower:
         if gap > 1.7 * size:
             return False
@@ -801,6 +851,12 @@ def _is_caption_continuation(previous: Dict[str, Any], candidate: Dict[str, Any]
     if abs(float(candidate["x0"]) - float(previous["x0"])) > 40:
         return False
     return True
+
+
+def is_reference_entry_start(text: str) -> bool:
+    """True for a numbered bibliography entry, not a citation-link tail."""
+    value = clean_text(text)
+    return bool(REFERENCE_ENTRY_RE.match(value)) and not REFERENCE_LINK_ONLY_RE.fullmatch(value)
 
 
 def _caption_blocks(lines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -846,6 +902,41 @@ def _caption_blocks(lines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 def annotate_table_bodies(lines: List[Dict[str, Any]], assets: List[Dict[str, Any]]) -> None:
     """Mark lines that belong to a table crop so they are not emitted twice."""
     table_assets = [asset for asset in assets if asset["kind"] == "table"]
+    for asset in table_assets:
+        x0, _, x1, bottom = [float(value) for value in asset["bbox"]]
+        page_lines = sorted(
+            (
+                line
+                for line in lines
+                if line["page"] == asset["page"]
+                and line.get("role") not in (
+                    "caption",
+                    "furniture",
+                    "meta",
+                    "table_body",
+                    "heading",
+                    "references_heading",
+                )
+                and not HEADING_RE.match(clean_text(line.get("text", "")))
+                and float(line["top"]) >= bottom - 2
+                and x0 <= (float(line["x0"]) + float(line["x1"])) / 2 <= x1
+            ),
+            key=lambda line: float(line["top"]),
+        )
+        cursor_bottom = bottom
+        for line in page_lines:
+            text = clean_text(line["text"])
+            gap = float(line["top"]) - cursor_bottom
+            words = text.split()
+            prose_like = (
+                (text.endswith(".") and len(words) > 10)
+                or (len(words) > 16 and text[:1].islower())
+                or bool(re.match(r"^(?:Note|Notes|Source|PV)\s*:", text, re.I) and len(words) > 6)
+            )
+            if gap > max(24.0, 2.2 * float(line.get("size") or 9.0)) or prose_like:
+                break
+            asset["bbox"][3] = max(float(asset["bbox"][3]), float(line["bottom"]))
+            cursor_bottom = float(asset["bbox"][3])
     for line in lines:
         if line["role"] in ("caption", "furniture", "figure_label"):
             continue
@@ -893,9 +984,24 @@ def _table_region(
     """Use the visible horizontal rules below a table caption to find its body."""
     rules = _horizontal_rules(page)
     start = float(caption["bottom"]) + 2
-    candidates = [rule for rule in rules if start <= rule["top"] <= start + 260]
+    candidates = sorted(
+        [rule for rule in rules if start <= rule["top"] <= page_height - 40],
+        key=lambda rule: rule["top"],
+    )
     if len(candidates) < 2:
         return None
+    # A table's rules form one vertical chain. Stop at a large break instead
+    # of imposing a fixed 260 pt ceiling: long tables routinely exceed that,
+    # and the old limit silently cut every lower row out of the crop.
+    max_gap = max(72.0, page_height * 0.09)
+    chain = [candidates[0]]
+    for rule in candidates[1:]:
+        if rule["top"] - chain[-1]["top"] > max_gap:
+            break
+        chain.append(rule)
+    if len(chain) < 2:
+        return None
+    candidates = chain
     top = min(rule["top"] for rule in candidates)
     bottom = max(rule["top"] for rule in candidates)
     if bottom - top < 8:
@@ -1211,7 +1317,35 @@ def render_source_pages(pdf_path: Path, out_dir: Path, dpi: int = 110) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _join_lines(texts: List[str]) -> str:
+def _complete_terms(lines: Iterable[Dict[str, Any]]) -> set[str]:
+    """Collect evidence for deciding whether a line-end hyphen is lexical."""
+    terms: set[str] = set()
+    for line in lines:
+        text = clean_text(line.get("text", ""))
+        trailing = re.search(r"([A-Za-z]+)-$", text)
+        for match in re.finditer(r"(?<![A-Za-z])([A-Za-z]+(?:-[A-Za-z]+)*)(?![A-Za-z])", text):
+            token = match.group(1).lower()
+            if trailing and token == trailing.group(1).lower() and match.end() == len(text) - 1:
+                continue
+            terms.add(token)
+    return terms
+
+
+def _remove_line_hyphen(stem: str, prefix: str, complete_terms: Optional[set[str]]) -> bool:
+    if complete_terms is None:
+        return True
+    joined = (stem + prefix).lower()
+    lexical = (stem + "-" + prefix).lower()
+    if joined in complete_terms:
+        return True
+    if lexical in complete_terms:
+        return False
+    # An unseen concatenation is ambiguous. Preserve the visible hyphen
+    # instead of silently manufacturing a non-word such as "domainspecific".
+    return False
+
+
+def _join_lines(texts: List[str], complete_terms: Optional[set[str]] = None) -> str:
     """Join wrapped lines, undoing conservative end-of-line hyphenation."""
     out = ""
     for text in texts:
@@ -1222,7 +1356,20 @@ def _join_lines(texts: List[str]) -> str:
             out = text
             continue
         if out.endswith("-") and text[:1].islower():
-            out = out[:-1] + text
+            stem_match = re.search(r"([A-Za-z]+)-$", out)
+            prefix_match = re.match(r"([A-Za-z]+)", text)
+            if (
+                stem_match
+                and prefix_match
+                and _remove_line_hyphen(
+                    stem_match.group(1),
+                    prefix_match.group(1),
+                    complete_terms,
+                )
+            ):
+                out = out[:-1] + text
+            else:
+                out += text
         else:
             out += " " + text
     return clean_text(out)
@@ -1256,9 +1403,136 @@ def _table_body_lines(asset: Dict[str, Any], lines: List[Dict[str, Any]]) -> Lis
     return selected
 
 
+def _algorithm_steps(
+    body_lines: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Preserve numbered algorithm steps and their control-flow depth."""
+    steps: List[Dict[str, Any]] = []
+    depth = 0
+    left_edges = [
+        float(line["x0"])
+        for line in body_lines
+        if not ALGORITHM_BOUNDARY_RE.fullmatch(clean_text(line["text"]))
+    ]
+    left = min(left_edges, default=0.0)
+    for line in body_lines:
+        text = clean_text(line["text"])
+        if ALGORITHM_BOUNDARY_RE.fullmatch(text):
+            continue
+        match = ALGORITHM_STEP_RE.match(text)
+        if not match:
+            continue
+        statement = match.group("text").strip()
+        upper = statement.upper()
+        if re.match(r"^END\s+(?:IF|WHILE)\b", upper):
+            depth = max(0, depth - 1)
+        elif re.match(r"^ELSE\s+IF\b", upper):
+            depth = max(0, depth - 1)
+        steps.append(
+            {
+                "number": int(match.group("number")),
+                "text": text,
+                "depth": depth,
+                "indent": round(max(0.0, float(line["x0"]) - left), 2),
+                "sourceId": line["id"],
+                "page": line["page"],
+            }
+        )
+        if (
+            re.match(r"^(?:WHILE|IF|ELSE\s+IF)\b", upper)
+            or ("THEN" in upper and re.match(r"^(?:IF|ELSE\s+IF)\b", upper))
+        ):
+            depth += 1
+    return steps
+
+
+def _collect_algorithm(
+    lines: List[Dict[str, Any]],
+    caption_index: int,
+    caption_end: int,
+    caption_text: str,
+) -> Optional[Tuple[Dict[str, Any], int]]:
+    """Collect ``Algorithm caption -> BEGIN -> numbered steps -> END``.
+
+    The caller has already resolved caption continuation lines. The result is
+    accepted only when an enclosing END and at least two numbered steps are
+    visible, so a normal paragraph mentioning "Algorithm" cannot absorb body
+    text.
+    """
+    if caption_index >= len(lines) or caption_end >= len(lines):
+        return None
+    page = int(lines[caption_index]["page"])
+    scope = lines[caption_index].get("columnScope")
+    body: List[Dict[str, Any]] = []
+    cursor = caption_end
+    found_begin = False
+    found_end = False
+    while cursor < len(lines):
+        line = lines[cursor]
+        if int(line["page"]) != page or line.get("columnScope") != scope:
+            break
+        text = clean_text(line["text"])
+        if not found_begin:
+            if re.fullmatch(r"BEGIN", text, re.I):
+                found_begin = True
+                body.append(line)
+                cursor += 1
+                continue
+            break
+        if re.fullmatch(r"END", text, re.I):
+            body.append(line)
+            cursor += 1
+            found_end = True
+            break
+        if line.get("role") == "caption":
+            break
+        body.append(line)
+        cursor += 1
+    if not found_begin or not found_end:
+        return None
+    steps = _algorithm_steps(body)
+    if len(steps) < 2:
+        return None
+    caption_lines = lines[caption_index:caption_end]
+    all_lines = caption_lines + body
+    label_match = CAPTION_RE.match(caption_text)
+    label = (
+        f"{label_match.group('kind').title()} {label_match.group('num')}"
+        if label_match
+        else "Algorithm"
+    )
+    algorithm_text = "\n".join(
+        ("  " * int(step["depth"])) + str(step["text"]) for step in steps
+    )
+    return (
+        {
+            "type": "algorithm",
+            "text": caption_text,
+            "caption": caption_text,
+            "label": label,
+            "algorithmText": algorithm_text,
+            "steps": steps,
+            "page": page,
+            "bbox": _union_bbox(
+                [
+                    (item["x0"], item["top"], item["x1"], item["bottom"])
+                    for item in all_lines
+                ]
+            ),
+            "sourceIds": [item["id"] for item in all_lines],
+        },
+        cursor,
+    )
+
+
 def build_blocks(lines: List[Dict[str, Any]], assets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Turn classified lines into ordered MirrorDoc blocks."""
     blocks: List[Dict[str, Any]] = []
+    complete_terms = _complete_terms(lines)
+
+    def join_lines(values: List[str]) -> str:
+        return _join_lines(values, complete_terms)
+
     section = ""
     in_references = False
     references_started = False
@@ -1274,7 +1548,7 @@ def build_blocks(lines: List[Dict[str, Any]], assets: List[Dict[str, Any]]) -> L
         # ACKNOWLEDGMENTS and supporting-info blocks can interrupt the
         # reference list in the second column; a numbered entry still belongs
         # to the reference list when the list has already started.
-        if references_started and role == "prose" and REFERENCE_ENTRY_RE.match(line["text"]):
+        if references_started and role == "prose" and is_reference_entry_start(line["text"]):
             in_references = True
 
         if role == "title":
@@ -1286,7 +1560,7 @@ def build_blocks(lines: List[Dict[str, Any]], assets: List[Dict[str, Any]]) -> L
             blocks.append(
                 {
                     "type": "title",
-                    "text": _join_lines([item["text"] for item in group]),
+                    "text": join_lines([item["text"] for item in group]),
                     "page": line["page"],
                     "bbox": _union_bbox(
                         [(item["x0"], item["top"], item["x1"], item["bottom"]) for item in group]
@@ -1343,7 +1617,7 @@ def build_blocks(lines: List[Dict[str, Any]], assets: List[Dict[str, Any]]) -> L
                     break
                 group.append(nxt)
                 j += 1
-            text = _join_lines([item["text"] for item in group])
+            text = join_lines([item["text"] for item in group])
             text = re.sub(r"^Abstract\b\s*:?\s*", "", text, flags=re.I)
             blocks.append(
                 {
@@ -1386,15 +1660,27 @@ def build_blocks(lines: List[Dict[str, Any]], assets: List[Dict[str, Any]]) -> L
                 "bbox": _union_bbox(
                     [(item["x0"], item["top"], item["x1"], item["bottom"]) for item in group]
                 ),
-                "text": _join_lines([item["text"] for item in group]),
+                "text": join_lines([item["text"] for item in group]),
             }
+            algorithm_match = CAPTION_RE.match(line["text"])
+            if algorithm_match and algorithm_match.group("kind").lower() == "algorithm":
+                collected = _collect_algorithm(lines, i, j, caption["text"])
+                if collected is not None:
+                    algorithm, next_index = collected
+                    blocks.append(algorithm)
+                    i = next_index
+                    continue
             asset = _asset_for_caption(caption, assets)
             if asset is not None:
                 body_text = ""
                 asset_lines: List[Dict[str, Any]] = []
                 if asset["kind"] == "table":
                     body_lines = _table_body_lines(asset, lines)
-                    body_text = _join_lines([item["text"] for item in body_lines])
+                    # Keep visual row boundaries in the machine-readable table
+                    # text. The display can still use the original crop; later
+                    # translation/table tools no longer receive one flattened
+                    # pseudo-paragraph.
+                    body_text = "\n".join(clean_text(item["text"]) for item in body_lines)
                     asset_lines = body_lines
                 elif asset["kind"] == "figure":
                     x0, top, x1, bottom = [float(value) for value in asset["bbox"]]
@@ -1411,7 +1697,7 @@ def build_blocks(lines: List[Dict[str, Any]], assets: List[Dict[str, Any]]) -> L
                 blocks.append(
                     {
                         "type": asset["kind"] if asset["kind"] in ("figure", "table") else "figure",
-                        "text": _join_lines([asset["caption"], body_text]) if body_text else asset["caption"],
+                        "text": join_lines([asset["caption"], body_text]) if body_text else asset["caption"],
                         "caption": asset["caption"],
                         "tableText": asset.get("text") or body_text,
                         "label": asset["label"],
@@ -1455,7 +1741,7 @@ def build_blocks(lines: List[Dict[str, Any]], assets: List[Dict[str, Any]]) -> L
             blocks.append(
                 {
                     "type": "equation",
-                    "text": _join_lines([item["text"] for item in group]),
+                    "text": join_lines([item["text"] for item in group]),
                     "label": asset["label"] if asset else "Equation",
                     "asset": asset.get("image", "") if asset else "",
                     "page": line["page"],
@@ -1485,7 +1771,7 @@ def build_blocks(lines: List[Dict[str, Any]], assets: List[Dict[str, Any]]) -> L
             entries: List[List[Dict[str, Any]]] = []
             current: List[Dict[str, Any]] = []
             for item in group:
-                if REFERENCE_ENTRY_RE.match(item["text"]):
+                if is_reference_entry_start(item["text"]):
                     if current:
                         entries.append(current)
                     current = [item]
@@ -1498,7 +1784,7 @@ def build_blocks(lines: List[Dict[str, Any]], assets: List[Dict[str, Any]]) -> L
                 blocks.append(
                     {
                         "type": "reference",
-                        "text": _join_lines([item["text"] for item in entry_lines]),
+                        "text": join_lines([item["text"] for item in entry_lines]),
                         "section": section,
                         "page": first["page"],
                         "bbox": _union_bbox(
@@ -1548,7 +1834,7 @@ def build_blocks(lines: List[Dict[str, Any]], assets: List[Dict[str, Any]]) -> L
                 break
             group.append(nxt)
             j += 1
-        text = _join_lines([item["text"] for item in group])
+        text = join_lines([item["text"] for item in group])
         indent = max(0.0, float(line["x0"]) - body_left)
         previous_bottom = (
             float(blocks[-1]["bbox"][3])

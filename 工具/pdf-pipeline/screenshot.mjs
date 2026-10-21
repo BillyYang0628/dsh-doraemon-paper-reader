@@ -53,6 +53,11 @@ try {
   const equation = page.locator('figure.equation').first()
   if ((await equation.count()) > 0) await equation.screenshot({ path: path.join(outDir, 'html-equation.png') })
 
+  const algorithm = page.locator('figure.algorithm').first()
+  if ((await algorithm.count()) > 0) {
+    await algorithm.screenshot({ path: path.join(outDir, 'html-algorithm.png') })
+  }
+
   if (anchor) {
     const target = page.locator(anchor).first()
     if ((await target.count()) > 0) {
