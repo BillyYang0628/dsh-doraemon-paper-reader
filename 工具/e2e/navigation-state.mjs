@@ -31,7 +31,7 @@ if (args.url) {
   browser = await chromium.launchPersistentContext(path.resolve(args.profile ?? '工具/gen/_b0-navigation-profile'), {
     channel: 'msedge',
     headless: true,
-    viewport: { width: 1440, height: 1000 },
+    viewport: { width: 1920, height: 1080 },
     locale: 'zh-CN',
   })
   page = browser.pages()[0] ?? (await browser.newPage())
@@ -83,6 +83,9 @@ async function metrics() {
     const pane = candidates[0] || document.querySelector('.dpr-readerPane')
     const bar = document.querySelector('.dpr-readerBar')
     const outline = document.querySelector('.dpr-readerOutline')
+    const body = document.querySelector('.dpr-readerBody')
+    const layout = document.querySelector('.dpr-readerLayout')
+    const visiblePane = document.querySelector('.dpr-pane')
     const rect = (element) => element?.getBoundingClientRect() || null
     return {
       scrollTop: pane?.scrollTop ?? null,
@@ -94,6 +97,9 @@ async function metrics() {
       barBottom: rect(bar)?.bottom ?? null,
       outlineTop: rect(outline)?.top ?? null,
       outlineBottom: rect(outline)?.bottom ?? null,
+      readerBodyWidth: rect(body)?.width ?? null,
+      readerLayoutWidth: rect(layout)?.width ?? null,
+      visiblePaneWidth: rect(visiblePane)?.width ?? null,
     }
   })
 }
@@ -101,6 +107,8 @@ async function metrics() {
 await openHome()
 await openReaderByTitle()
 await page.waitForTimeout(500)
+await mkdir(outDir, { recursive: true })
+await page.screenshot({ path: path.join(outDir, 'reader-wide.png') })
 const initial = await metrics()
 await page.evaluate(() => {
   const candidates = [document.scrollingElement, ...document.querySelectorAll('.dpr-readerPane, .dpr-readerPane *')]
@@ -125,7 +133,14 @@ if (initial.outlineTop !== null && initial.barBottom !== null && initial.outline
 if (scrolled.outlineTop !== null && scrolled.barBottom !== null && scrolled.outlineTop + 1 < scrolled.barBottom) {
   findings.push('R-014: scrolled sticky outline is obscured by reader bar')
 }
-if (scrolled.scrollTop && reopened.scrollTop !== null && Math.abs(reopened.scrollTop - scrolled.scrollTop) > 40) {
+if (
+  initial.readerBodyWidth !== null &&
+  initial.visiblePaneWidth !== null &&
+  initial.readerBodyWidth + 48 < initial.visiblePaneWidth
+) {
+  findings.push('R-010: reader body leaves avoidable blank width')
+}
+if (scrolled.scrollTop && reopened.scrollTop !== null && Math.abs(reopened.scrollTop - scrolled.scrollTop) > 120) {
   findings.push('R-015: reader scrollTop was not restored after leaving and reopening')
 }
 

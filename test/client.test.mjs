@@ -271,9 +271,14 @@ test('UI 样张落地：主界面/PDF/阅读/对照使用新页级结构', async
   assert.match(source, /dpr-cmpMetric/)
   assert.match(
     source,
-    /\.dpr-loadHero\{[\s\S]*grid-template-columns:112px minmax\(0,1fr\)[\s\S]*gap:16px/,
+    /\.dpr-loadHero\{[\s\S]*grid-template-columns:minmax\(0,1fr\)[\s\S]*gap:16px/,
   )
-  assert.match(source, /\.dpr-loadHero \.dpr-mascotSlot img\{max-width:92px\}/)
+  assert.match(source, /\.dpr-loadHero \.dpr-mascotSlot img\{max-width:216px\}/)
+  assert.match(source, /\.dpr-readerLayout\{[\s\S]*grid-template-columns:clamp\(176px,16vw,244px\)/)
+  assert.match(source, /\.dpr-readerLayout\{[\s\S]*max-width:1470px/)
+  assert.match(source, /\.dpr-readerBody\{width:100%;max-width:none;/)
+  assert.match(source, /\.dpr-readerOutline\{[\s\S]*top:var\(--dpr-outline-top,12px\)/)
+  assert.match(source, /body\[data-ds-dark-theme\] \.dpr-mascotSticker/)
   assert.match(
     source,
     /\.dpr-importHero\{[\s\S]*grid-template-columns:minmax\(0,1fr\) 104px[\s\S]*margin-bottom:24px/,
@@ -396,6 +401,7 @@ test('主界面：非对称阅读桌 + 两条并排入口，点哪条开哪页',
     findAll(hero[0], (element) => element.props.className === 'dpr-mascotSticker').length === 1,
     '主形象使用贴纸容器',
   )
+  assert.match(collectText(hero[0]).join(' '), /在下大肥鱼，请指教/)
   assert.equal(
     findAll(hero[0], (element) => element.type === 'img').length,
     1,
@@ -908,9 +914,10 @@ test('加载页按 running / done / failed 切换翻书、成功与装死状态'
     findAll(runningTree, (element) =>
       String(element.props.className).includes('dpr-mascotSprite--loading'),
     )[0].props.style.width,
-    92,
-    '加载图缩到 92px，给右侧阶段文案留出安全间距',
+    216,
+    '加载图放大到 216px，使用纵向 Hero 排布',
   )
+  assert.equal(findAll(runningTree, (element) => element.props.className === 'dpr-slotNote').length, 0)
 
   const doneTree = T.LoadingPanel({
     ...callbacks,

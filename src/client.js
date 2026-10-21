@@ -48,6 +48,7 @@ window.__ModuleLoader__.load({
     const JOB_ID_RE = /^[A-Za-z0-9_-]{8,64}$/
     const LANG_STORAGE_PREFIX = 'doraemonPaperReader.langMode.'
     const SCROLL_STORAGE_PREFIX = 'doraemonPaperReader.scroll.'
+    const readerScrollMemory = new Map()
 
     /** 跨阅读页与主对话输入区共享的批注草稿。 */
     function createAnnotationStore() {
@@ -1920,23 +1921,29 @@ body[data-ds-dark-theme] .dpr-maintenanceOverlay){
 }
 .dpr-loadHero{
   display:grid;
-  grid-template-columns:112px minmax(0,1fr);
+  grid-template-columns:minmax(0,1fr);
+  justify-items:center;
   align-items:center;
   gap:16px;
   width:100%;
-  text-align:left;
+  text-align:center;
 }
 .dpr-loadHero .dpr-mascotSlot{
   box-sizing:border-box;
   min-width:0;
-  min-height:128px;
+  min-height:216px;
   width:100%;
-  padding:8px;
+  padding:0;
+  overflow:visible;
+  background:none;
+  border:0;
+  border-radius:0;
 }
-.dpr-loadHero .dpr-mascotSlot img{max-width:92px}
+.dpr-loadHero .dpr-mascotSlot::before{display:none}
+.dpr-loadHero .dpr-mascotSlot img{max-width:216px}
 .dpr-loadCopy{min-width:0}
-.dpr-loadCopy .dpr-question{margin:0 0 6px;font-size:var(--dpr-font-title);text-align:left}
-.dpr-loadCopy .dpr-sub{margin:0;text-align:left}
+.dpr-loadCopy .dpr-question{margin:0 0 6px;font-size:var(--dpr-font-title);text-align:center}
+.dpr-loadCopy .dpr-sub{margin:0;text-align:center}
 .dpr-pageTopbar{
   flex:none;
   display:flex;
@@ -2083,19 +2090,19 @@ body[data-ds-dark-theme] .dpr-maintenanceOverlay){
   white-space:nowrap;
 }
 .dpr-readerBarTitle{display:block;flex:none;font-size:var(--dpr-font-xs)}
-.dpr-readerBody{padding:18px 24px 74px}
+.dpr-readerBody{width:100%;max-width:none;padding:18px clamp(16px,2vw,32px) 74px}
 .dpr-readerLayout{
   display:grid;
-  grid-template-columns:132px minmax(0,1fr);
+  grid-template-columns:clamp(176px,16vw,244px) minmax(0,1fr);
   align-items:start;
   gap:16px;
   width:100%;
-  max-width:980px;
+  max-width:1470px;
   margin:0 auto;
 }
 .dpr-readerOutline{
   position:sticky;
-  top:12px;
+  top:var(--dpr-outline-top,12px);
   padding:11px;
   background:color-mix(in srgb,var(--dpr-surface-raised) 92%,transparent);
   border:1px solid var(--dpr-line);
@@ -2137,6 +2144,8 @@ body[data-ds-dark-theme] .dpr-maintenanceOverlay){
 }
 .dpr-readerArticle{
   min-width:0;
+  width:100%;
+  max-width:1180px;
   padding:28px 30px 44px;
   background:var(--dpr-surface-raised);
   border:1px solid var(--dpr-line);
@@ -2236,6 +2245,11 @@ body[data-ds-dark-theme] .dpr-maintenanceOverlay){
   transform:none;
   animation:none;
   image-rendering:pixelated;
+}
+body[data-ds-dark-theme] .dpr-mascotSticker{
+  background:color-mix(in srgb,var(--dpr-brand) 14%,var(--dpr-surface-raised));
+  border-color:color-mix(in srgb,var(--dpr-brand) 42%,var(--dpr-line-strong));
+  box-shadow:3px 3px 0 color-mix(in srgb,var(--dpr-brand) 22%,transparent);
 }
 .dpr-mascotSprite{
   position:relative;
@@ -2577,7 +2591,7 @@ body[data-ds-dark-theme] .dpr-maintenanceOverlay){
       'home.recent': '最近论文',
       'home.refresh': '刷新',
       'home.maintenance': '环境与存储',
-      'home.mascotCaption': '小的我 · 大肥鱼',
+      'home.mascotCaption': '在下大肥鱼，请指教',
       'home.note': '单篇精读走上面两条路；要比多篇，就用下面的「多篇综述」。',
       'path.file.title': 'PDF 文件',
       'path.file.desc': '把论文交给小的我',
@@ -2730,7 +2744,7 @@ body[data-ds-dark-theme] .dpr-maintenanceOverlay){
       'home.recent': 'Recent papers',
       'home.refresh': 'Refresh',
       'home.maintenance': 'Environment & storage',
-      'home.mascotCaption': 'Little old me · Big Fatty Fish',
+      'home.mascotCaption': 'At your service - Big Fatty Fish',
       'home.note': 'Use the two routes above for one paper; use “Literature review” below to compare several.',
       'path.file.title': 'PDF file',
       'path.file.desc': 'Hand the paper to little old me',
@@ -4679,12 +4693,12 @@ body[data-ds-dark-theme] .dpr-maintenanceOverlay){
       const failed = job.status === 'failed'
       const running = job.status === 'running'
       const mascot = failed
-        ? mascotArt(t, 92, { src: MASCOT_ASSETS.errorPlayDead, altKey: 'art.mascot.error' })
+        ? mascotArt(t, 216, { src: MASCOT_ASSETS.errorPlayDead, altKey: 'art.mascot.error' })
         : done
-          ? mascotSprite(t, 92, 'success')
+          ? mascotSprite(t, 216, 'success')
           : running
-            ? mascotSprite(t, 92, 'loading')
-            : mascotArt(t, 92, {
+            ? mascotSprite(t, 216, 'loading')
+            : mascotArt(t, 216, {
                 src: MASCOT_ASSETS.loadingTurnPage,
                 altKey: 'art.mascot.loading',
               })
@@ -4710,7 +4724,6 @@ body[data-ds-dark-theme] .dpr-maintenanceOverlay){
               'div',
               { className: 'dpr-mascotSlot' },
               mascot,
-              React.createElement('span', { className: 'dpr-slotNote' }, t('import.animationSlot')),
             ),
             React.createElement(
               'div',
@@ -9399,6 +9412,7 @@ body[data-ds-dark-theme] .dpr-maintenanceOverlay){
       const [glossaryError, setGlossaryError] = useState('')
       const annotations = useAnnotations()
       const rootRef = useRef(null)
+      const outlineRef = useRef(null)
       const flashTimer = useRef(null)
       const barRef = useRef(null)
       const anchorRef = useRef(null)
@@ -9487,22 +9501,39 @@ body[data-ds-dark-theme] .dpr-maintenanceOverlay){
         if (!root || !doc || !jobId) return undefined
         const key = SCROLL_STORAGE_PREFIX + jobId
         let frame = 0
+        let restoreFrame = 0
+        let lastScroll = readerScrollMemory.get(jobId) || 0
         if (!targetBlockId) {
           try {
-            const saved = Number(window.localStorage?.getItem(key))
-            if (Number.isFinite(saved) && saved > 0) root.scrollTop = saved
+            const stored = Number(window.localStorage?.getItem(key))
+            if ((!lastScroll || !Number.isFinite(lastScroll)) && Number.isFinite(stored) && stored > 0) {
+              lastScroll = stored
+            }
           } catch {
             // 存储不可用时只影响记忆，不影响阅读。
           }
+          if (lastScroll > 0) {
+            const restore = (attempt = 0) => {
+              const current = rootRef.current
+              if (!current) return
+              current.scrollTop = lastScroll
+              if (attempt < 2) restoreFrame = window.requestAnimationFrame(() => restore(attempt + 1))
+            }
+            restoreFrame = window.requestAnimationFrame(() => restore())
+          }
         }
         const save = () => {
+          if (!lastScroll || !Number.isFinite(lastScroll)) return
+          readerScrollMemory.set(jobId, lastScroll)
           try {
-            window.localStorage?.setItem(key, String(root.scrollTop))
+            window.localStorage?.setItem(key, String(lastScroll))
           } catch {
             // 同上。
           }
         }
         const onScroll = () => {
+          lastScroll = rootRef.current?.scrollTop || 0
+          readerScrollMemory.set(jobId, lastScroll)
           if (frame) return
           frame = window.requestAnimationFrame(() => {
             frame = 0
@@ -9513,9 +9544,34 @@ body[data-ds-dark-theme] .dpr-maintenanceOverlay){
         return () => {
           root.removeEventListener('scroll', onScroll)
           if (frame) window.cancelAnimationFrame(frame)
+          if (restoreFrame) window.cancelAnimationFrame(restoreFrame)
           save()
         }
       }, [doc, jobId, targetBlockId])
+
+      useEffect(() => {
+        const root = rootRef.current
+        const outline = outlineRef.current
+        if (!root || !outline || !doc) return undefined
+        const update = () => {
+          const bar = root.querySelector('.dpr-readerBar')
+          const current = outlineRef.current
+          if (!bar || !current) return
+          const rootTop = root.getBoundingClientRect().top
+          const barBottom = bar.getBoundingClientRect().bottom
+          const offset = Math.max(8, Math.round(barBottom - rootTop + 8))
+          current.style.setProperty('--dpr-outline-top', offset + 'px')
+        }
+        update()
+        window.addEventListener('resize', update)
+        const bar = root.querySelector('.dpr-readerBar')
+        const observer = typeof ResizeObserver === 'function' && bar ? new ResizeObserver(update) : null
+        observer?.observe(bar)
+        return () => {
+          window.removeEventListener('resize', update)
+          observer?.disconnect()
+        }
+      }, [doc, jobId])
 
       useEffect(() => {
         if (!jobId) return
@@ -11433,7 +11489,7 @@ body[data-ds-dark-theme] .dpr-maintenanceOverlay){
                   { className: 'dpr-readerLayout' },
                   React.createElement(
                     'aside',
-                    { className: 'dpr-readerOutline', 'aria-label': t('reader.outline') },
+                    { className: 'dpr-readerOutline', ref: outlineRef, 'aria-label': t('reader.outline') },
                     React.createElement('h3', null, t('reader.outline')),
                     React.createElement(
                       'nav',

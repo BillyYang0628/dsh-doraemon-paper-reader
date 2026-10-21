@@ -135,20 +135,29 @@ async function assertNoHorizontalOverflow(label) {
 
 async function assertLoadPanelsSeparated(label) {
   const boxes = await page.evaluate(() => {
-    const slot = document.querySelector('.dpr-loadHero .dpr-mascotSlot')?.getBoundingClientRect()
+    const slotEl = document.querySelector('.dpr-loadHero .dpr-mascotSlot')
+    const slot = slotEl?.getBoundingClientRect()
     const copy = document.querySelector('.dpr-loadCopy')?.getBoundingClientRect()
     return slot && copy
       ? {
-          slot: { left: slot.left, right: slot.right, width: slot.width },
-          copy: { left: copy.left, right: copy.right, width: copy.width },
-          gap: copy.left - slot.right,
+          slot: { left: slot.left, top: slot.top, right: slot.right, bottom: slot.bottom, width: slot.width, height: slot.height },
+          copy: { left: copy.left, top: copy.top, right: copy.right, bottom: copy.bottom, width: copy.width },
+          gap: copy.top - slot.bottom,
+          background: getComputedStyle(slotEl).backgroundColor,
+          borderWidth: getComputedStyle(slotEl).borderTopWidth,
+          padding: getComputedStyle(slotEl).paddingTop,
+          noteExists: Boolean(document.querySelector('.dpr-slotNote')),
         }
       : null
   })
   if (!boxes) {
     findings.push(label + ' 缺少加载页插画槽或文案栏')
-  } else if (boxes.gap < 12) {
-    findings.push(label + ' 插画槽侵入文案栏：' + JSON.stringify(boxes))
+  } else if (boxes.gap < 8) {
+    findings.push(label + ' 插画与文案垂直间距不足：' + JSON.stringify(boxes))
+  }
+  if (boxes && boxes.noteExists) findings.push(label + ' 仍残留插画说明文字')
+  if (boxes && (boxes.background !== 'rgba(0, 0, 0, 0)' || boxes.borderWidth !== '0px' || boxes.padding !== '0px')) {
+    findings.push(label + ' 插画外层仍有残留卡面：' + JSON.stringify(boxes))
   }
 }
 
@@ -188,7 +197,7 @@ try {
   const doneFrameSize = await doneSprite.evaluate((element) => element.getBoundingClientRect().width)
   const doneEndTransform = 'matrix(1, 0, 0, 1, ' + -4 * doneFrameSize + ', 0)'
   const doneImage = await imageState('.dpr-mascotSprite--success img')
-  if (doneImage.naturalWidth !== 1600 || doneImage.naturalHeight !== 320) {
+  if (doneImage.naturalWidth !== 1600 || doneImage.naturalHeight !== 320 || doneImage.width !== 1080 || doneImage.height !== 216) {
     findings.push('成功精灵图尺寸不对：' + JSON.stringify(doneImage))
   }
   await page.waitForTimeout(700)
@@ -235,7 +244,7 @@ try {
   await loadingSprite.waitFor({ state: 'visible', timeout: 15000 })
   await assertLoadPanelsSeparated('PDF 加载态')
   const loadingImage = await imageState('.dpr-mascotSprite--loading img')
-  if (loadingImage.naturalWidth !== 1920 || loadingImage.naturalHeight !== 320) {
+  if (loadingImage.naturalWidth !== 1920 || loadingImage.naturalHeight !== 320 || loadingImage.width !== 1296 || loadingImage.height !== 216) {
     findings.push('加载精灵图尺寸不对：' + JSON.stringify(loadingImage))
   }
   await page.waitForTimeout(300)
