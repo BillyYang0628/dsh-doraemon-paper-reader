@@ -1,6 +1,6 @@
 {
   "name": "dsh-doraemon-paper-reader",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "机器猫论文阅读器（Doraemon Paper Reader）：DSH 插件的论文精读工作台——获取与镜像 · 中英对照 · 引用蓝链 · 划词批注",
@@ -9,18 +9,49 @@
   "main": "./src/index.js",
   "exports": {
     ".": "./src/index.js",
+    "./client": "./src/client.js",
     "./package.json": "./package.json"
   },
-  "files": ["src", "cordis.patch.yml", "README.md", "icon.svg"],
+  "files": [
+    "src",
+    "assets",
+    "cordis.patch.yml",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "icon.svg",
+    "工具/pdf-pipeline/extract_pdf.py",
+    "工具/pdf-pipeline/reconcile_layout.py",
+    "工具/pdf-pipeline/render_html.py",
+    "工具/pdf-pipeline/ai_order_audit.py",
+    "工具/html-pipeline/extract_html.py",
+    "工具/html-pipeline/README.md",
+    "工具/pdf-pipeline/requirements.txt",
+    "工具/vision-table-slices.py",
+    "工具/render_formulas.py",
+    "工具/dev/setup-python.mjs",
+    "工具/dev/benchmark-pdf.mjs"
+  ],
   "dsh": {
     "manifestVersion": 1,
-    "bundle": { "patch": "./cordis.patch.yml" }
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": ["@deepseek-ai/dsh-client-ui-sidebar-right"]
+    }
   },
   "engines": {
     "dsh": ">=0.2.0-rc.2 <0.3.0-0",
     "node": "^22.19.0 || >=24"
   },
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "test:pdf-regression": "python 工具/pdf-pipeline/regression_check.py --keep-going",
+    "setup:python": "node 工具/dev/setup-python.mjs",
+    "benchmark:pdf": "node 工具/dev/benchmark-pdf.mjs",
+    "verify": "npm test && node 工具/check-doc-links.mjs && npm run test:pdf-regression",
+    "pack:release": "npm pack --pack-destination dist",
+    "release:check": "npm run verify && npm run pack:release"
   }
 }
