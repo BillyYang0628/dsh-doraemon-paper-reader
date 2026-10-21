@@ -106,5 +106,79 @@
         ]
       ]
     }
+  },
+  {
+    "id": "iot-special",
+    "titleIncludes": "IoT Data Discovery: Routing Table and Summarization Techniques",
+    "sourcePath": "工具/gen/audit-special-20261021/sources/iot-data-discovery.pdf",
+    "optional": true,
+    "expect": {
+      "pages": 18,
+      "blockTypes": {
+        "abstract": 1,
+        "keywords": 1,
+        "algorithm": 3,
+        "figure": 12,
+        "table": 1,
+        "reference": 20
+      },
+      "minBlockTypes": { "paragraph": 160, "heading": 24 },
+      "referenceRange": [1, 20],
+      "requiredText": [
+        "Algorithm 1. QFP",
+        "Algorithm 2. AdvP",
+        "Algorithm 3. Summarize",
+        "IoT, Data Discovery, Summarization Techniques"
+      ],
+      "forbiddenText": ["(cid:", "�"],
+      "order": [
+        [
+          "1 INTRODUCTION",
+          "2 RELATED WORKS",
+          "3 PROBLEM SPECIFICATION AND EXAMPLES",
+          "4 SUMMARIZATION TECHNIQUES",
+          "5 WHEN TO SUMMARIZE",
+          "REFERENCES"
+        ]
+      ]
+    }
+  },
+  {
+    "id": "twitter-review-special",
+    "titleIncludes": "Twitter Spam Detection: A Systematic Review",
+    "sourcePath": "工具/gen/audit-special-20261021/sources/twitter-spam-review.pdf",
+    "optional": true,
+    "expect": {
+      "pages": 18,
+      "blockTypes": {
+        "abstract": 1,
+        "keywords": 1,
+        "figure": 11,
+        "table": 14,
+        "reference": 91
+      },
+      "minBlockTypes": { "paragraph": 80, "heading": 18 },
+      "referenceRange": [1, 91],
+      "requiredText": [
+        "LIST OF ABBREVIATIONS",
+        "TABLE 3 RESEARCH QUESTIONS",
+        "4.4 Network Analysis Approaches",
+        "Spam, Twitter, machine learning"
+      ],
+      "forbiddenText": ["2016. His research interests", "(cid:", "�"],
+      "order": [
+        [
+          "1 INTRODUCTION",
+          "2 RELATED WORK AND MOTIVATION",
+          "3 RESEARCH METHODOLOGY",
+          "4 TAXONOMY FOR TWITTER SPAM DETECTION",
+          "5 ANALYSIS OF RESULTS",
+          "6 OPEN ISSUES AND FUTURE DIRECTIONS",
+          "7 THREATS TO VALIDITY",
+          "8 CONCLUSION",
+          "REFERENCES"
+        ]
+      ]
+    }
   }
 ]

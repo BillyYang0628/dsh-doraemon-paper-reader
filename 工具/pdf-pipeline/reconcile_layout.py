@@ -23,7 +23,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from PIL import Image, ImageChops, ImageDraw, ImageStat
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageStat
 
 
 LEADING_DOTS_RE = re.compile(r"^[\s.·•…]+")
@@ -670,7 +670,9 @@ def cleanup_noise(blocks: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], i
     out = []
     removed = 0
     for block in blocks:
-        text = str(block.get("text") or "").strip()
+        raw_text = str(block.get("text") or "").strip()
+        block["_cleanupLeadingDots"] = bool(LEADING_DOTS_RE.match(raw_text))
+        text = raw_text
         if block.get("type") in ("paragraph", "caption", "heading", "code"):
             text = LEADING_DOTS_RE.sub("", text).strip()
             block["text"] = text
@@ -722,7 +724,13 @@ def cleanup_noise(blocks: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], i
                 candidate = out[lookahead]
                 if candidate.get("type") != "paragraph" or candidate.get("page") != block.get("page"):
                     continue
-                continuation = clean_caption(candidate.get("text", ""))
+                raw_candidate = str(candidate.get("text", ""))
+                if not candidate.get("_cleanupLeadingDots") and not re.match(
+                    r"^[\s.·•…]+",
+                    raw_candidate,
+                ):
+                    continue
+                continuation = clean_caption(raw_candidate)
                 core = re.sub(r"[.\s·•…]", "", continuation)
                 current = re.sub(r"[.\s·•…]", "", str(block.get("caption") or ""))
                 if core and len(core) <= 30 and core.lower() not in current.lower():
@@ -731,6 +739,8 @@ def cleanup_noise(blocks: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], i
                     removed += 1
                     break
         i += 1
+    for block in merged:
+        block.pop("_cleanupLeadingDots", None)
     return merged, removed
 
 
@@ -842,16 +852,6 @@ def visual_audit(job: Path, doc: Dict[str, Any], lines: List[Dict[str, Any]]) ->
             try:
                 page_image = Image.open(page_path).convert("RGB")
                 sx, sy = page_scale(lines, page, page_image)
-                crop = page_image.crop(
-                    (
-                        max(0, int(float(bbox[0]) * sx)),
-                        max(0, int(float(bbox[1]) * sy)),
-                        min(page_image.width, int(float(bbox[2]) * sx)),
-                        min(page_image.height, int(float(bbox[3]) * sy)),
-                    )
-                )
-                source_crop = audit_dir / f"{label.lower().replace(' ', '-')}-source.png"
-                crop.save(source_crop)
                 asset_image = Image.open(asset_path).convert("RGB")
                 entry["blank"] = ImageStat.Stat(asset_image).var[0] < 10
                 bbox_ratio = (float(bbox[2]) - float(bbox[0])) / max(1.0, float(bbox[3]) - float(bbox[1]))
@@ -863,12 +863,47 @@ def visual_audit(job: Path, doc: Dict[str, Any], lines: List[Dict[str, Any]]) ->
                     warnings.append(f"{label}: 裁剪图接近空白")
                 if entry["aspectDelta"] > 0.18:
                     warnings.append(f"{label}: 裁剪图长宽比与 bbox 偏差 {entry['aspectDelta']}")
+                compare_width = min(480, max(1, asset_image.width))
+                compare_height = max(1, round(asset_image.height * compare_width / max(1, asset_image.width)))
+                compare_size = (compare_width, compare_height)
+                asset_norm = asset_image.convert("L").resize(compare_size, Image.Resampling.LANCZOS)
+                asset_norm = asset_norm.filter(ImageFilter.GaussianBlur(1.0))
+
+                def compare_crop(candidate: Image.Image) -> float:
+                    if entry["rotated"]:
+                        candidate = candidate.rotate(-90, expand=True, fillcolor="white")
+                    source_norm = candidate.convert("L").resize(
+                        compare_size,
+                        Image.Resampling.LANCZOS,
+                    )
+                    source_norm = source_norm.filter(ImageFilter.GaussianBlur(1.0))
+                    diff = ImageChops.difference(source_norm, asset_norm)
+                    return float(ImageStat.Stat(diff).mean[0])
+
+                base_left = max(0, int(float(bbox[0]) * sx))
+                base_top = max(0, int(float(bbox[1]) * sy))
+                base_right = min(page_image.width, int(float(bbox[2]) * sx))
+                base_bottom = min(page_image.height, int(float(bbox[3]) * sy))
+                best_crop = None
+                best_diff = None
+                best_offset = 0
+                for offset in (-32, -24, -16, -8, 0, 8, 16, 24, 32):
+                    top = max(0, min(page_image.height - 1, base_top + offset))
+                    bottom = max(top + 1, min(page_image.height, base_bottom + offset))
+                    candidate = page_image.crop((base_left, top, base_right, bottom))
+                    difference = compare_crop(candidate)
+                    if best_diff is None or difference < best_diff:
+                        best_crop = candidate
+                        best_diff = difference
+                        best_offset = offset
+                crop = best_crop
+                entry["pixelMeanDiff"] = round(best_diff or 0.0, 2)
+                entry["alignmentOffsetPt"] = round(best_offset / max(0.001, sy), 2)
                 if entry["rotated"]:
                     crop = crop.rotate(-90, expand=True, fillcolor="white")
-                resized = crop.resize(asset_image.size)
-                diff = ImageChops.difference(resized, asset_image)
-                entry["pixelMeanDiff"] = round(sum(ImageStat.Stat(diff).mean) / 3, 2)
-                if entry["pixelMeanDiff"] > 55:
+                source_crop = audit_dir / f"{label.lower().replace(' ', '-')}-source.png"
+                crop.save(source_crop)
+                if entry["pixelMeanDiff"] > 70:
                     warnings.append(f"{label}: 裁剪图与原页区域差异较大（{entry['pixelMeanDiff']}）")
                 rows.append((label, crop, asset_image))
             except Exception as error:

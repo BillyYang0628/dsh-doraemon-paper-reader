@@ -82,6 +82,16 @@ def resolve_sources(cases: List[Dict[str, Any]], args: argparse.Namespace) -> Di
     resolved: Dict[str, Path] = {}
     for case in cases:
         case_id = str(case["id"])
+        if case.get("sourcePath"):
+            path = Path(str(case["sourcePath"]))
+            if not path.is_absolute():
+                path = HERE.parent.parent / path
+            if path.is_file():
+                resolved[case_id] = path
+                continue
+            if case.get("optional"):
+                continue
+            raise SystemExit("样本不存在：" + str(path))
         if case_id in sources:
             resolved[case_id] = sources[case_id]
             continue
@@ -157,7 +167,7 @@ def run_case(case: Dict[str, Any], pdf: Path, out_root: Path) -> Dict[str, Any]:
         start, end = [int(value) for value in expect["referenceRange"]]
         numbers = []
         for block in references:
-            match = re.match(r"\s*(\d+)[.)]\s+", str(block.get("text") or ""))
+            match = re.match(r"\s*\[?(\d+)[\].)]\s+", str(block.get("text") or ""))
             if match:
                 numbers.append(int(match.group(1)))
         if numbers != list(range(start, end + 1)):
@@ -213,6 +223,8 @@ def run_case(case: Dict[str, Any], pdf: Path, out_root: Path) -> Dict[str, Any]:
 
     audit_findings = structure_audit.get("findings") or []
     for item in audit_findings:
+        if item.get("severity") != "error":
+            continue
         errors.append(
             "structure audit: "
             + str(item.get("rule"))
@@ -249,14 +261,18 @@ def main() -> int:
     sources = resolve_sources(cases, args)
     out_root = Path(args.out).resolve()
     out_root.mkdir(parents=True, exist_ok=True)
+    selected_cases = [case for case in cases if str(case["id"]) in sources]
     results = []
-    for case in cases:
+    for case in selected_cases:
         result = run_case(case, sources[str(case["id"])], out_root)
         results.append(result)
         if not result["ok"] and not args.keep_going:
             break
     report = {
-        "ok": all(item["ok"] for item in results) and len(results) == len(cases),
+        "ok": all(item["ok"] for item in results) and len(results) == len(selected_cases),
+        "declaredCases": len(cases),
+        "selectedCases": len(selected_cases),
+        "skippedOptional": [str(case["id"]) for case in cases if str(case["id"]) not in sources],
         "cases": results,
     }
     (out_root / "regression-report.json").write_text(

@@ -15,7 +15,11 @@ from extract_pdf import (  # noqa: E402
     CAPTION_RE,
     _detect_column_split,
     _column_end_for_full_width_artifact,
+    _borderless_figure_region,
+    _borderless_table_region,
+    _algorithm_steps,
     _equation_regions,
+    _group_chars_to_lines,
     _infer_column_split,
     _is_rotated_page,
     _is_caption_continuation,
@@ -25,6 +29,7 @@ from extract_pdf import (  # noqa: E402
     build_mirrordoc,
     classify_line,
     clean_text,
+    is_reference_entry_start,
     reconstruct_line_text,
 )
 from reconcile_layout import (  # noqa: E402
@@ -40,7 +45,7 @@ from reconcile_layout import (  # noqa: E402
     text_quality_issues,
 )
 from ai_order_audit import _extract_json, build_outline  # noqa: E402
-from audit_structure import build_report  # noqa: E402
+from audit_structure import build_report, detect_unattached_captions  # noqa: E402
 from render_html import render_html  # noqa: E402
 
 
@@ -88,6 +93,57 @@ class TextReconstructionTests(unittest.TestCase):
         self.assertEqual(clean_text("a\u00a0 b"), "a b")
         self.assertEqual(clean_text("a 15(cid:48)(cid:48) laptop"), "a 15″ laptop")
 
+    def test_full_width_heading_merged_with_other_column_is_split(self):
+        chars = [
+            {
+                "text": "4.3 Tweet Analysis Approaches",
+                "x0": 36,
+                "x1": 184,
+                "top": 100,
+                "bottom": 110,
+                "size": 10,
+                "fontname": "Test-Bold",
+            },
+            {
+                "text": "and to explore whether those topics were misused",
+                "x0": 292,
+                "x1": 530,
+                "top": 100,
+                "bottom": 110,
+                "size": 10,
+                "fontname": "Test-Roma",
+            },
+        ]
+        lines = _group_chars_to_lines(chars, 7, "full")
+        self.assertEqual([line["text"] for line in lines], [
+            "4.3 Tweet Analysis Approaches",
+            "and to explore whether those topics were misused",
+        ])
+
+    def test_full_width_right_heading_is_split_from_left_body(self):
+        chars = [
+            {
+                "text": "collaboration of the approach could improve diagnosis",
+                "x0": 36,
+                "x1": 270,
+                "top": 100,
+                "bottom": 110,
+                "size": 10,
+                "fontname": "Test-Roma",
+            },
+            {
+                "text": "4.4 Network Analysis Approaches",
+                "x0": 292,
+                "x1": 500,
+                "top": 100,
+                "bottom": 110,
+                "size": 10,
+                "fontname": "Test-Bold",
+            },
+        ]
+        lines = _group_chars_to_lines(chars, 7, "full")
+        self.assertEqual(lines[-1]["text"], "4.4 Network Analysis Approaches")
+
 
 class ClassificationTests(unittest.TestCase):
     def line(self, text: str, **overrides):
@@ -116,6 +172,10 @@ class ClassificationTests(unittest.TestCase):
         self.assertIsNotNone(CAPTION_RE.match(". . . Table 1. Characteristics of Eligible Trials."))
         self.assertEqual(classify_line(self.line(". . . Table 1. Characteristics.", role=None), 10.0), "caption")
 
+    def test_bare_table_label_is_a_caption(self):
+        self.assertEqual(classify_line(self.line("TABLE 7", top=270), 10.0), "caption")
+        self.assertEqual(classify_line(self.line("Table 9 shows the results", top=270), 10.0), "prose")
+
     def test_structured_abstract_and_all_caps_headings(self):
         self.assertEqual(classify_line(self.line("Background. Sharing data.", top=160), 9.0), "abstract")
         self.assertEqual(classify_line(self.line("INTRODUCTION", size=11.0), 9.0), "heading")
@@ -125,6 +185,16 @@ class ClassificationTests(unittest.TestCase):
         self.assertEqual(
             classify_line(self.line("Abstract", top=250, bold=True), 10.0),
             "abstract",
+        )
+
+    def test_abstract_and_index_terms_with_dash_are_structural(self):
+        self.assertEqual(
+            classify_line(self.line("Abstract— This paper studies the problem.", top=160), 10.0),
+            "abstract",
+        )
+        self.assertEqual(
+            classify_line(self.line("Index Terms— Spam, Twitter, machine learning", top=300), 10.0),
+            "keywords",
         )
 
     def test_algorithm_sentinels_are_not_headings(self):
@@ -142,6 +212,32 @@ class ClassificationTests(unittest.TestCase):
             classify_line(self.line("........................", top=500), 10.0),
             "furniture",
         )
+
+    def test_numbered_sentence_is_not_a_heading(self):
+        self.assertEqual(
+            classify_line(
+                self.line("2. There are 3 data streams hosted by three nodes", top=300),
+                10.0,
+            ),
+            "prose",
+        )
+        self.assertEqual(
+            classify_line(
+                self.line("8. Additionally, Table 1 depicts frequently used abbreviations", top=300),
+                10.0,
+            ),
+            "prose",
+        )
+
+    def test_wrapped_numbered_heading_is_rejoined(self):
+        lines = [
+            self.line("5.2 Research Objectives, Techniques, and", top=360, bottom=370, size=10, bold=True),
+            self.line("Evaluation Parameters", top=371, bottom=381, size=10, bold=True),
+            self.line("The results answer the questions.", top=392, bottom=401.5, size=9.5),
+        ]
+        annotate_roles(lines)
+        self.assertEqual(lines[0]["role"], "heading")
+        self.assertEqual(lines[1]["role"], "heading_continuation")
 
     def test_generic_page_varying_running_head_is_furniture(self):
         lines = [
@@ -296,6 +392,29 @@ class ClassificationTests(unittest.TestCase):
         }
         self.assertTrue(_is_caption_continuation(caption, tail))
 
+    def test_full_width_bare_table_label_accepts_centered_subtitle(self):
+        caption = {
+            "page": 4,
+            "role": "caption",
+            "text": "TABLE 2",
+            "x0": 260,
+            "top": 60,
+            "bottom": 70,
+            "size": 9.5,
+            "columnScope": "full",
+        }
+        subtitle = {
+            "page": 4,
+            "role": "prose",
+            "text": "SUMMARY OF THE RELATED WORKS",
+            "x0": 210,
+            "top": 72,
+            "bottom": 81,
+            "size": 7.5,
+            "columnScope": "full",
+        }
+        self.assertTrue(_is_caption_continuation(caption, subtitle))
+
 
 class ColumnDetectionTests(unittest.TestCase):
     def test_full_page_sideways_text_is_marked_rotated(self):
@@ -359,6 +478,43 @@ class ColumnDetectionTests(unittest.TestCase):
         ]
         self.assertEqual(_column_end_for_full_width_artifact(clusters, 842, 612, 45), 229)
         self.assertIsNone(_column_end_for_full_width_artifact(clusters, 842, 612, 240))
+
+    def test_borderless_table_region_uses_dense_rows_until_body_text(self):
+        caption = {
+            "page": 2,
+            "columnScope": "full",
+            "bbox": [150, 70, 450, 80],
+            "top": 70,
+            "bottom": 80,
+        }
+        lines = [
+            {"id": "title", "page": 2, "role": "prose", "text": "REVIEW TABLE", "x0": 170, "x1": 420, "top": 81, "bottom": 90, "size": 7.5, "columnScope": "full"},
+            {"id": "head", "page": 2, "role": "prose", "text": "Ref Main ideas Merits", "x0": 40, "x1": 540, "top": 95, "bottom": 100, "size": 6, "columnScope": "full"},
+            {"id": "row", "page": 2, "role": "prose", "text": "[1] Detecting spam High accuracy", "x0": 40, "x1": 530, "top": 110, "bottom": 116, "size": 6, "columnScope": "full"},
+            {"id": "body", "page": 2, "role": "prose", "text": "This paragraph returns to ordinary body text.", "x0": 40, "x1": 540, "top": 130, "bottom": 140, "size": 10, "columnScope": "full"},
+        ]
+        region = _borderless_table_region(lines, caption, 10.0, 600, 842)
+        self.assertIsNotNone(region)
+        self.assertGreater(region[3], 116)
+        self.assertLess(region[3], 130)
+
+    def test_borderless_vector_figure_uses_small_text_above_caption(self):
+        caption = {
+            "page": 2,
+            "columnScope": "right",
+            "bbox": [300, 150, 500, 160],
+            "top": 150,
+            "bottom": 160,
+        }
+        lines = [
+            {"id": "a", "page": 2, "role": "prose", "text": "root", "x0": 340, "x1": 360, "top": 100, "bottom": 106, "size": 7, "columnScope": "right"},
+            {"id": "b", "page": 2, "role": "prose", "text": "left pointer right", "x0": 320, "x1": 430, "top": 120, "bottom": 126, "size": 7, "columnScope": "right"},
+            {"id": "body", "page": 2, "role": "prose", "text": "Normal body prose before the figure starts here.", "x0": 300, "x1": 530, "top": 70, "bottom": 80, "size": 10, "columnScope": "right"},
+        ]
+        region = _borderless_figure_region(lines, caption, 10, 600)
+        self.assertIsNotNone(region)
+        self.assertGreater(region[2] - region[0], 100)
+        self.assertLess(region[3], 150)
 
 
 class CoverageTests(unittest.TestCase):
@@ -491,6 +647,60 @@ class MirrorDocTests(unittest.TestCase):
         references = [block for block in blocks if block["type"] == "reference"]
         self.assertEqual(len(references), 2)
         self.assertIn("[CrossRef]", references[0]["text"])
+
+    def test_input_while_algorithm_without_begin_end_is_collected(self):
+        def line(ident, text, top, size=8.0):
+            return {
+                "id": ident,
+                "page": 4,
+                "role": "caption" if ident == "caption" else "prose",
+                "text": text,
+                "columnScope": "left",
+                "x0": 30,
+                "x1": 270,
+                "top": top,
+                "bottom": top + size,
+                "size": size,
+                "bold": ident == "caption",
+            }
+
+        lines = [
+            line("caption", "Algorithm 1. Lookup", 100, 8),
+            line("input", "Input: query q", 110, 8),
+            line("while", "While r is not null do", 120, 9),
+            line("read", "Read the next child", 130, 9),
+            line("end", "Endwhile", 140, 9),
+            line("narrative", "For example, the query traverses two nodes.", 150, 10),
+        ]
+        blocks = build_blocks(lines, [])
+        self.assertEqual([block["type"] for block in blocks], ["algorithm", "paragraph"])
+        self.assertEqual(len(blocks[0]["steps"]), 4)
+        self.assertEqual([step["depth"] for step in blocks[0]["steps"]], [0, 0, 1, 0])
+
+    def test_algorithm_else_aligns_with_if_and_body_nests(self):
+        def step(ident, text, top):
+            return {
+                "id": ident,
+                "page": 1,
+                "text": text,
+                "x0": 30,
+                "top": top,
+                "bottom": top + 10,
+                "size": 9,
+            }
+
+        steps = _algorithm_steps([
+            step("if", "If condition then", 0),
+            step("then", "Do work", 10),
+            step("else", "Else", 20),
+            step("other", "Do other work", 30),
+            step("end", "Endif", 40),
+        ])
+        self.assertEqual([item["depth"] for item in steps], [0, 1, 0, 1, 0])
+
+    def test_bibliography_year_is_not_a_reference_start(self):
+        self.assertTrue(is_reference_entry_start("21. A. Author. Paper title."))
+        self.assertFalse(is_reference_entry_start("2015. His research interests include networks."))
 
     def test_standalone_html_renders_algorithm_steps(self):
         doc = {
@@ -660,6 +870,15 @@ class ReconcileTests(unittest.TestCase):
         self.assertIn("publications", out[0]["caption"])
         self.assertGreaterEqual(removed, 3)
 
+    def test_cleanup_does_not_merge_bare_word_into_table_caption(self):
+        blocks = [
+            {"type": "table", "page": 2, "caption": "TABLE 2", "text": "TABLE 2"},
+            {"type": "paragraph", "page": 2, "text": "tection"},
+        ]
+        out, _ = cleanup_noise(blocks)
+        self.assertEqual(out[0]["caption"], "TABLE 2")
+        self.assertEqual(len(out), 2)
+
     def test_supporting_information_is_split_into_headed_items(self):
         blocks = [{
             "type": "paragraph",
@@ -712,6 +931,13 @@ class ReconcileTests(unittest.TestCase):
 
 
 class StructureAuditTests(unittest.TestCase):
+    def test_unattached_figure_caption_is_reported(self):
+        findings = detect_unattached_captions([
+            {"id": "c", "type": "caption", "page": 2, "text": "Fig. 3. Missing plot"},
+            {"id": "f", "type": "figure", "label": "Figure 2"},
+        ])
+        self.assertEqual(findings[0]["rule"], "figure.caption-unattached")
+
     def test_audit_is_clean_for_fully_assigned_simple_document(self):
         with tempfile.TemporaryDirectory() as raw:
             job = Path(raw)

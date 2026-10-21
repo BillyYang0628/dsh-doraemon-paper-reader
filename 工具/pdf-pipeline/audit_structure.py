@@ -105,6 +105,7 @@ def detect_running_heads(lines: List[Dict[str, Any]], body_size: float) -> List[
         and float(line.get("top") or 0) < 90
         and len(normalized(line.get("text"))) <= 100
         and float(line.get("size") or 0) <= max(body_size * 1.02, 1.0)
+        and line.get("role") != "caption"
     ]
     signatures = Counter(fingerprint(line.get("text")) for line in candidates if fingerprint(line.get("text")))
     evidence = []
@@ -276,6 +277,37 @@ def detect_algorithm_issues(blocks: List[Dict[str, Any]], lines: List[Dict[str, 
                 )
             )
     return out
+
+
+def detect_unattached_captions(blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Surface captions whose visual asset was not recovered."""
+    findings: List[Dict[str, Any]] = []
+    assets = {
+        "figure": {normalized(block.get("label")).lower() for block in blocks if block.get("type") == "figure"},
+        "table": {normalized(block.get("label")).lower() for block in blocks if block.get("type") == "table"},
+    }
+    for block in blocks:
+        if block.get("type") != "caption":
+            continue
+        text = normalized(block.get("text"))
+        match = re.match(r"^(Fig(?:ure)?\.?|Table)\s+(\d+)\b", text, re.I)
+        if not match:
+            continue
+        kind = "table" if match.group(1).lower() == "table" else "figure"
+        label = f"{kind.title()} {match.group(2)}"
+        if label.lower() in assets[kind]:
+            continue
+        findings.append(
+            finding(
+                f"{kind}.caption-unattached",
+                "warning",
+                f"{label} 有题注但没有对应视觉资产",
+                blockId=block.get("id"),
+                page=block.get("page"),
+                text=text[:220],
+            )
+        )
+    return findings
 
 
 def detect_abstract_issues(
@@ -563,6 +595,11 @@ def detect_paragraph_issues(
             )
     surviving = []
     collapsed_lexical = []
+    block_by_source = {
+        str(source_id): block
+        for block in blocks
+        for source_id in block.get("sourceIds") or []
+    }
     for candidate in hyphen_candidates:
         left = normalized(by_id[candidate["sourceId"]].get("text"))
         right = normalized(by_id[candidate["nextSourceId"]].get("text"))
@@ -572,14 +609,17 @@ def detect_paragraph_issues(
             continue
         broken = stem.group(1) + "-" + prefix.group(1)
         joined = stem.group(1) + prefix.group(1)
-        broken_present = any(broken.lower() in normalized(block.get("text")).lower() for block in blocks)
-        joined_present = any(
+        block = block_by_source.get(candidate["sourceId"]) or block_by_source.get(candidate["nextSourceId"])
+        block_text = normalized((block or {}).get("text")).lower()
+        broken_present = broken.lower() in block_text
+        joined_present = bool(
             re.search(
                 r"(?<![A-Za-z])" + re.escape(joined.lower()) + r"(?![A-Za-z])",
-                normalized(block.get("text")).lower(),
+                block_text,
             )
-            for block in blocks
         )
+        if joined_present:
+            continue
         if broken.lower() in complete_terms and joined.lower() not in complete_terms:
             if joined_present and not broken_present:
                 collapsed_lexical.append({**candidate, "collapsedForm": joined})
@@ -844,6 +884,7 @@ def build_report(job: Path) -> Dict[str, Any]:
     findings.extend(coverage_findings)
     findings.extend(detect_suspicious_headings(blocks, lines, running_ids))
     findings.extend(detect_algorithm_issues(blocks, lines))
+    findings.extend(detect_unattached_captions(blocks))
     findings.extend(detect_abstract_issues(lines, doc, layout))
     findings.extend(paragraph_findings)
     findings.extend(reference_findings)

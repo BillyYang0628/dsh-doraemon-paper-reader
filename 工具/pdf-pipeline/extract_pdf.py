@@ -62,7 +62,8 @@ CID_REPLACEMENTS = {
 
 CAPTION_RE = re.compile(
     # Some publishers prefix captions with reconstruction dots (`. . . Table 1.`).
-    r"^[\s.·•…]*(?P<kind>Figure|Fig\.|Table|Algorithm)\s+(?P<num>\d+[a-zA-Z]?)[.:]\s*(?P<rest>.*)$",
+    r"^[\s.·•…]*(?P<kind>Figure|Fig\.|Table|Algorithm)\s+(?P<num>\d+[a-zA-Z]?)"
+    r"(?:(?:[.:])\s*(?P<rest>.*)|)$",
     re.I,
 )
 HEADING_RE = re.compile(r"^(?P<num>\d+(?:\.\d+)*)\.?\s+(?P<title>[A-Z][^\n]{0,140})$")
@@ -73,12 +74,22 @@ REFERENCE_LINK_ONLY_RE = re.compile(
     r"ADS|INSPEC|MathSciNet|Semantic Scholar)\]\s*$",
     re.I,
 )
+AUTHOR_BIO_RE = re.compile(
+    r"^(?:19|20)\d{2}\.\s+(?:His|Her|Their)\s+research\s+interests\b",
+    re.I,
+)
 DOI_RE = re.compile(r"10\.\d{4,9}/[-._;()/:A-Z0-9]+", re.I)
 ARXIV_RE = re.compile(r"arXiv[:\s]*(\d{4}\.\d{4,5}(?:v\d+)?)", re.I)
 MATH_LIMIT_RE = re.compile(r"^[A-Za-z0-9\s∈∑√,;:+\-−=<>≤≥\[\](){}|.!_'′″]+$")
 PAGE_TOTAL_RE = re.compile(r"\b\d+\s+(?:of|/)\s+\d+\b", re.I)
 ALGORITHM_BOUNDARY_RE = re.compile(r"^(?:BEGIN|END(?:\s+(?:IF|WHILE))?)$", re.I)
 ALGORITHM_STEP_RE = re.compile(r"^\s*(?P<number>\d{1,4})\s*[:.]\s*(?P<text>.+)$")
+ALGORITHM_CUE_RE = re.compile(
+    r"^(?:INPUT|OUTPUT|REQUIRE|ENSURE|FROM|WHILE|IF|ELSE|FOR\s+(?:ALL|EACH)|FOREACH|"
+    r"RETURN|EXIT|BREAK|CONTINUE|PROCEDURE|FUNCTION|ADD|REMOVE|UPDATE|SET|LET|"
+    r"INITIALIZE|COMPUTE|CHOOSE|SELECT|CREATE|CALL|#)",
+    re.I,
+)
 
 
 def clean_text(value: str) -> str:
@@ -357,6 +368,55 @@ def _group_chars_to_lines(
         if not placed:
             clusters.append([char])
     clusters.sort(key=lambda cluster: (min(float(item["top"]) for item in cluster), min(float(item["x0"]) for item in cluster)))
+    if scope == "full":
+        split_clusters: List[List[Dict[str, Any]]] = []
+        for cluster in clusters:
+            ordered = sorted(cluster, key=lambda item: float(item["x0"]))
+            cuts = [
+                index
+                for index in range(1, len(ordered))
+                if float(ordered[index]["x0"]) - float(ordered[index - 1]["x1"]) > 45.0
+            ]
+            heading_right_cut = None
+            for index in range(1, len(ordered)):
+                gap = float(ordered[index]["x0"]) - float(ordered[index - 1]["x1"])
+                if gap <= 8.0:
+                    continue
+                right_candidate = reconstruct_line_text(ordered[index:])
+                right_candidate_match = HEADING_RE.match(right_candidate)
+                if (
+                    right_candidate_match
+                    and _looks_like_heading_title(right_candidate_match.group("title"))
+                    and len(reconstruct_line_text(ordered[:index])) >= 12
+                ):
+                    heading_right_cut = index
+                    break
+            if heading_right_cut is not None:
+                cuts.append(heading_right_cut)
+            if cuts:
+                cut = max(
+                    cuts,
+                    key=lambda index: float(ordered[index]["x0"]) - float(ordered[index - 1]["x1"]),
+                )
+                left = ordered[:cut]
+                right = ordered[cut:]
+                left_text = reconstruct_line_text(left)
+                right_text = reconstruct_line_text(right)
+                left_match = HEADING_RE.match(left_text)
+                right_match = HEADING_RE.match(right_text)
+                if (
+                    left_match
+                    and _looks_like_heading_title(left_match.group("title"))
+                    and len(right_text) >= 12
+                ) or (
+                    right_match
+                    and _looks_like_heading_title(right_match.group("title"))
+                    and len(left_text) >= 12
+                ):
+                    split_clusters.extend([left, right])
+                    continue
+            split_clusters.append(cluster)
+        clusters = split_clusters
     out = []
     for line_index, cluster in enumerate(clusters, start=1):
         cluster.sort(key=lambda item: float(item["x0"]))
@@ -489,6 +549,28 @@ def _furniture_signature(text: str) -> str:
     return re.sub(r"\s+", " ", value).strip(" .-|")
 
 
+def _looks_like_heading_title(text: str) -> bool:
+    value = clean_text(text)
+    words = value.split()
+    if not value or len(words) > 14:
+        return False
+    if value.endswith((",", ";", ":")):
+        return False
+    if re.search(r"\b(?:and|or|but|of|the|to|for|in|on|with|by|from|as)\s*$", value, re.I):
+        return False
+    if value.endswith("-"):
+        return False
+    if re.match(
+        r"^(?:There\s+(?:are|is)|We\s+|This\s+|These\s+|It\s+|Additionally\b|"
+        r"Moreover\b|However\b|Therefore\b|Thus\b|Hence\b|Furthermore\b|Finally\b|"
+        r"Consequently\b|In\s+this\b)",
+        value,
+        re.I,
+    ):
+        return False
+    return True
+
+
 def classify_line(line: Dict[str, Any], body_size: float) -> str:
     text = line["text"]
     page = int(line["page"])
@@ -550,7 +632,7 @@ def classify_line(line: Dict[str, Any], body_size: float) -> str:
         or re.search(r"\b(?:Received|Accepted|Published|Academic Editor)\b", text)
     ):
         return "meta"
-    if re.fullmatch(r"Abstract\s*:?", text, re.I) or re.match(r"^Abstract\s*:", text, re.I):
+    if re.fullmatch(r"Abstract\s*[:—–-]?", text, re.I) or re.match(r"^Abstract\s*[:—–-]", text, re.I):
         return "abstract"
     if (
         page == 1
@@ -558,7 +640,7 @@ def classify_line(line: Dict[str, Any], body_size: float) -> str:
         and re.match(r"^(?:Background|Principal Findings|Conclusions?|Significance|Objective|Methods|Results)\.", text, re.I)
     ):
         return "abstract"
-    if re.match(r"^Keywords\s*:", text, re.I):
+    if re.match(r"^(?:Keywords|Index Terms)\s*[:—–-]", text, re.I):
         return "keywords"
     if re.match(r"^(References|Bibliography)\s*$", text, re.I):
         return "references_heading"
@@ -574,8 +656,10 @@ def classify_line(line: Dict[str, Any], body_size: float) -> str:
         and not re.search(r"\b(?:and|or|but|nor|of|the|to|for|in|on|with|by|from|as)\s*$", text, re.I)
     ):
         return "heading"
-    if HEADING_RE.match(text) and len(text) <= 140 and (size >= body_size * 0.95 or line["bold"]):
-        return "heading"
+    heading_match = HEADING_RE.match(text)
+    if heading_match and len(text) <= 140 and (size >= body_size * 0.95 or line["bold"]):
+        if _looks_like_heading_title(heading_match.group("title")):
+            return "heading"
     if EQUATION_RE.search(text) and ("=" in text or "(cid:" in text):
         return "equation"
     if re.match(r"^\([a-zA-Z]\)(?:\s*\([a-zA-Z]\))*$", text):
@@ -587,6 +671,38 @@ def annotate_roles(lines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     body_size = estimate_body_size(lines)
     for line in lines:
         line["role"] = classify_line(line, body_size)
+    # A numbered heading can wrap before its final title words. Recover only
+    # when every continuation is bold, shares the column and font size, and
+    # the combined title becomes structurally complete.
+    for index, line in enumerate(lines):
+        if line.get("role") != "prose" or not line.get("bold"):
+            continue
+        first_match = HEADING_RE.match(clean_text(line["text"]))
+        if not first_match:
+            continue
+        group = [line]
+        title = first_match.group("title")
+        cursor = index + 1
+        while cursor < len(lines) and len(group) < 4:
+            candidate = lines[cursor]
+            gap = float(candidate["top"]) - float(group[-1]["bottom"])
+            if (
+                candidate["page"] != line["page"]
+                or candidate.get("columnScope") != line.get("columnScope")
+                or candidate.get("role") != "prose"
+                or not candidate.get("bold")
+                or abs(float(candidate["size"]) - float(line["size"])) > 1.0
+                or gap > 2.2 * max(float(line["size"]), 1.0)
+            ):
+                break
+            group.append(candidate)
+            title = (title + " " + clean_text(candidate["text"])).strip()
+            if _looks_like_heading_title(title):
+                line["role"] = "heading"
+                for continuation in group[1:]:
+                    continuation["role"] = "heading_continuation"
+                break
+            cursor += 1
     # Journal names are not a reliable whitelist. Detect page-varying running
     # heads by their normalized repeated signature or an explicit "N of M"
     # marker near the top edge.
@@ -685,6 +801,17 @@ def annotate_roles(lines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         for line in lines[reference_start + 1 :]:
             if REFERENCE_ENTRY_RE.match(line["text"]):
                 line["role"] = "prose"
+        biography_start = next(
+            (
+                index
+                for index, line in enumerate(lines[reference_start + 1 :], start=reference_start + 1)
+                if AUTHOR_BIO_RE.match(clean_text(line["text"]))
+            ),
+            None,
+        )
+        if biography_start is not None:
+            for line in lines[biography_start:]:
+                line["role"] = "meta"
     # Repeated running heads (e.g. "Sharing Data Citation Rate") are furniture,
     # not body paragraphs. Count normalized short lines near the top of pages.
     running = Counter(
@@ -808,6 +935,42 @@ def _image_clusters(page: pdfplumber.page.Page, page_height: float) -> List[Dict
     return clusters
 
 
+def _vector_clusters(page: pdfplumber.page.Page, page_height: float) -> List[Dict[str, Any]]:
+    """Cluster actual vector drawing objects into figure candidates."""
+    rects: List[Dict[str, float]] = []
+    objects = list(page.curves) + list(page.lines)
+    for item in objects:
+        x0 = float(item.get("x0", 0))
+        top = float(item.get("top", 0))
+        x1 = float(item.get("x1", 0))
+        bottom = float(item.get("bottom", 0))
+        if top < 70 or bottom > page_height - 40:
+            continue
+        if abs(x1 - x0) < 0.8 and abs(bottom - top) < 0.8:
+            continue
+        if bottom - top <= 1.5 and x1 - x0 > float(page.width) * 0.8:
+            # Full-width rules are table/page separators, not figure marks.
+            continue
+        rects.append({"x0": x0, "top": top, "x1": x1, "bottom": bottom})
+    clusters = []
+    for cluster in _cluster_rects(rects, gap=18.0):
+        boxes = [(item["x0"], item["top"], item["x1"], item["bottom"]) for item in cluster]
+        bbox = _union_bbox(boxes)
+        width = bbox[2] - bbox[0]
+        height = bbox[3] - bbox[1]
+        if width < 12 or height < 12 or width * height < 800:
+            continue
+        clusters.append(
+            {
+                "bbox": bbox,
+                "top": bbox[1],
+                "bottom": bbox[3],
+                "kind": "figure",
+            }
+        )
+    return clusters
+
+
 def _is_caption_continuation(previous: Dict[str, Any], candidate: Dict[str, Any]) -> bool:
     """Recognize the second/third line of a multi-line caption.
 
@@ -831,6 +994,18 @@ def _is_caption_continuation(previous: Dict[str, Any], candidate: Dict[str, Any]
     # model name (``(MobileViT-`` / ``XXSmall).``). The shared x-position and
     # tight leading are stronger evidence than capitalization in this case.
     previous_text = clean_text(previous.get("text", ""))
+    previous_match = CAPTION_RE.match(previous_text)
+    previous_is_bare_label = bool(previous_match and not clean_text(previous_match.group("rest") or ""))
+    if previous_is_bare_label and gap <= 1.7 * size:
+        if (
+            (
+                abs(float(candidate["x0"]) - float(previous["x0"])) <= 40
+                or previous.get("columnScope") == "full"
+            )
+            and float(candidate["size"]) <= float(previous["size"]) + 1.5
+            and text.isupper()
+        ):
+            return True
     if previous_text.endswith("-") and gap <= 1.7 * size:
         if abs(float(candidate["x0"]) - float(previous["x0"])) <= 40:
             return True
@@ -856,7 +1031,12 @@ def _is_caption_continuation(previous: Dict[str, Any], candidate: Dict[str, Any]
 def is_reference_entry_start(text: str) -> bool:
     """True for a numbered bibliography entry, not a citation-link tail."""
     value = clean_text(text)
-    return bool(REFERENCE_ENTRY_RE.match(value)) and not REFERENCE_LINK_ONLY_RE.fullmatch(value)
+    match = REFERENCE_ENTRY_RE.match(value)
+    if not match:
+        return False
+    if match.group("plain") is not None and int(match.group("plain")) > 999:
+        return False
+    return not REFERENCE_LINK_ONLY_RE.fullmatch(value)
 
 
 def _caption_blocks(lines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -868,16 +1048,28 @@ def _caption_blocks(lines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             if line["page"] == page and line["role"] not in ("furniture", "figure_label")
         ]
         page_lines.sort(key=lambda item: (item["top"], item["x0"]))
+        by_scope: Dict[str, List[Dict[str, Any]]] = {}
+        for item in page_lines:
+            by_scope.setdefault(str(item.get("columnScope")), []).append(item)
         i = 0
         while i < len(page_lines):
             if page_lines[i]["role"] != "caption":
                 i += 1
                 continue
-            group = [page_lines[i]]
-            j = i + 1
-            while j < len(page_lines) and _is_caption_continuation(group[-1], page_lines[j]):
-                group.append(page_lines[j])
-                j += 1
+            caption_line = page_lines[i]
+            scope_lines = by_scope.get(str(caption_line.get("columnScope")), [caption_line])
+            scope_index = next(
+                (index for index, item in enumerate(scope_lines) if item["id"] == caption_line["id"]),
+                0,
+            )
+            group = [caption_line]
+            scope_cursor = scope_index + 1
+            while scope_cursor < len(scope_lines) and _is_caption_continuation(
+                group[-1],
+                scope_lines[scope_cursor],
+            ):
+                group.append(scope_lines[scope_cursor])
+                scope_cursor += 1
             match = CAPTION_RE.match(group[0]["text"])
             label_kind = match.group("kind").lower() if match else ""
             label_num = match.group("num") if match else ""
@@ -890,12 +1082,13 @@ def _caption_blocks(lines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                     "bbox": _union_bbox(
                         [(item["x0"], item["top"], item["x1"], item["bottom"]) for item in group]
                     ),
+                    "columnScope": group[0].get("columnScope", "full"),
                     "top": float(group[0]["top"]),
                     "bottom": float(group[-1]["bottom"]),
                     "lines": group,
                 }
             )
-            i = j
+            i += 1
     return blocks
 
 
@@ -903,6 +1096,8 @@ def annotate_table_bodies(lines: List[Dict[str, Any]], assets: List[Dict[str, An
     """Mark lines that belong to a table crop so they are not emitted twice."""
     table_assets = [asset for asset in assets if asset["kind"] == "table"]
     for asset in table_assets:
+        if asset.get("borderless"):
+            continue
         x0, _, x1, bottom = [float(value) for value in asset["bbox"]]
         page_lines = sorted(
             (
@@ -976,6 +1171,41 @@ def assign_figure_labels(lines: List[Dict[str, Any]], assets: List[Dict[str, Any
             asset["bbox"] = list(_union_bbox([tuple(asset["bbox"]), label_box]))
 
 
+def annotate_figure_texts(lines: List[Dict[str, Any]], assets: List[Dict[str, Any]]) -> None:
+    """Assign diagram text inside a figure crop to that figure."""
+    figures = [asset for asset in assets if asset["kind"] == "figure"]
+    for asset in figures:
+        scope = asset.get("columnScope")
+        if scope not in ("left", "right"):
+            continue
+        scope_lines = [
+            line
+            for line in lines
+            if line["page"] == asset["page"] and line.get("columnScope") == scope
+        ]
+        if not scope_lines:
+            continue
+        column_x0 = min(float(line["x0"]) for line in scope_lines)
+        column_x1 = max(float(line["x1"]) for line in scope_lines)
+        width = float(asset["bbox"][2]) - float(asset["bbox"][0])
+        if width < (column_x1 - column_x0) * 0.55:
+            asset["bbox"][0] = max(0.0, column_x0 - 2)
+            asset["bbox"][2] = column_x1 + 2
+    for line in lines:
+        if line.get("role") in ("caption", "furniture", "meta", "table_body"):
+            continue
+        center_x = (float(line["x0"]) + float(line["x1"])) / 2
+        center_y = (float(line["top"]) + float(line["bottom"])) / 2
+        for asset in figures:
+            if asset["page"] != line["page"]:
+                continue
+            x0, top, x1, bottom = [float(value) for value in asset["bbox"]]
+            if x0 <= center_x <= x1 and top <= center_y <= bottom:
+                line["role"] = "figure_label"
+                asset.setdefault("labelIds", []).append(line["id"])
+                break
+
+
 def _table_region(
     page: pdfplumber.page.Page,
     caption: Dict[str, Any],
@@ -1012,6 +1242,111 @@ def _table_region(
         max(rule["x1"] for rule in candidates),
         min(page_height - 40, bottom + 4),
     )
+
+
+def _borderless_table_region(
+    lines: List[Dict[str, Any]],
+    caption: Dict[str, Any],
+    body_size: float,
+    page_width: float,
+    page_height: float,
+) -> Optional[Tuple[float, float, float, float]]:
+    """Infer a dense table from typography when the PDF draws no rules.
+
+    Literature-review tables often use a 5-7 pt grid with no cell borders.
+    A fixed crop is still better than flattening every row into prose. The
+    region starts after the caption/title and stops at the next caption,
+    heading, or body-sized prose line.
+    """
+    start = float(caption["bottom"]) + 1.0
+    scope = caption.get("columnScope")
+    caption_center = (float(caption["bbox"][0]) + float(caption["bbox"][2])) / 2
+    centered = abs(caption_center - page_width / 2) <= page_width * 0.12
+    if centered:
+        include_scopes = None
+    elif scope == "full":
+        include_scopes = {"right" if caption_center > page_width / 2 else "left"}
+    else:
+        include_scopes = {scope}
+    candidates: List[Dict[str, Any]] = []
+    for line in sorted(
+        (item for item in lines if item["page"] == caption["page"] and float(item["top"]) >= start),
+        key=lambda item: float(item["top"]),
+    ):
+        top = float(line["top"])
+        if top > page_height - 35:
+            break
+        text = clean_text(line["text"])
+        role = line.get("role")
+        if include_scopes is not None and line.get("columnScope") not in include_scopes:
+            continue
+        if role == "caption" and CAPTION_RE.match(text):
+            break
+        if role in ("heading", "references_heading") and text:
+            break
+        if role in ("furniture", "meta"):
+            continue
+        size = float(line.get("size") or 0.0)
+        if size >= body_size - 0.25 and len(text.split()) >= 5:
+            break
+        if size <= body_size - 0.2 or line.get("bold"):
+            candidates.append(line)
+    if len(candidates) < 3:
+        return None
+    bbox = _union_bbox(
+        [(item["x0"], item["top"], item["x1"], item["bottom"]) for item in candidates]
+    )
+    # Include the caption's horizontal extent so a wide table is not clipped
+    # to the narrower union of its text fragments.
+    bbox[0] = min(bbox[0], float(caption["bbox"][0]))
+    bbox[2] = max(bbox[2], float(caption["bbox"][2]))
+    return (bbox[0] - 2, bbox[1] - 2, bbox[2] + 2, min(page_height - 35, bbox[3] + 3))
+
+
+def _borderless_figure_region(
+    lines: List[Dict[str, Any]],
+    caption: Dict[str, Any],
+    body_size: float,
+    page_width: float,
+) -> Optional[Tuple[float, float, float, float]]:
+    """Infer a vector diagram above a figure caption."""
+    scope = caption.get("columnScope")
+    caption_center = (float(caption["bbox"][0]) + float(caption["bbox"][2])) / 2
+    if scope == "full":
+        scope = "right" if caption_center > page_width / 2 else "left"
+    candidates: List[Dict[str, Any]] = []
+    last_top = float(caption["top"])
+    for line in sorted(
+        (
+            item
+            for item in lines
+            if item["page"] == caption["page"]
+            and item.get("columnScope") == scope
+            and float(item["bottom"]) <= float(caption["top"]) + 1
+        ),
+        key=lambda item: float(item["top"]),
+        reverse=True,
+    ):
+        gap = last_top - float(line["bottom"])
+        role = line.get("role")
+        text = clean_text(line["text"])
+        size = float(line.get("size") or 0.0)
+        if gap > 45 or role in ("heading", "references_heading", "caption"):
+            break
+        if size >= body_size - 0.2 and len(text.split()) >= 5:
+            break
+        candidates.append(line)
+        last_top = float(line["top"])
+        if len(candidates) >= 80:
+            break
+    if len(candidates) < 2:
+        return None
+    bbox = _union_bbox(
+        [(item["x0"], item["top"], item["x1"], item["bottom"]) for item in candidates]
+    )
+    bbox[0] = min(bbox[0], float(caption["bbox"][0]))
+    bbox[2] = max(bbox[2], float(caption["bbox"][2]))
+    return (bbox[0] - 3, max(40.0, bbox[1] - 3), bbox[2] + 3, float(caption["top"]) - 2)
 
 
 def _equation_regions(lines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -1086,6 +1421,7 @@ def detect_assets(
     page_count: int,
 ) -> List[Dict[str, Any]]:
     captions = _caption_blocks(lines)
+    body_size = estimate_body_size(lines)
     assets: List[Dict[str, Any]] = []
     used_caption_ids = set()
 
@@ -1095,7 +1431,7 @@ def detect_assets(
                 break
             page_no = page_index + 1
             page_height = float(page.height)
-            clusters = _image_clusters(page, page_height)
+            clusters = _image_clusters(page, page_height) + _vector_clusters(page, page_height)
             page_captions = [caption for caption in captions if caption["page"] == page_no]
             figure_captions = sorted(
                 [caption for caption in page_captions if caption["label_kind"] == "figure"],
@@ -1136,11 +1472,46 @@ def detect_assets(
                                 "bbox": list(bbox),
                                 "caption": caption["text"],
                                 "caption_bbox": caption["bbox"],
+                                "columnScope": caption.get("columnScope", "full"),
                             }
                         )
                         used_caption_ids.add(id(caption))
+                    else:
+                        fallback = _borderless_figure_region(
+                            lines,
+                            caption,
+                            body_size,
+                            float(page.width),
+                        )
+                        if fallback is not None:
+                            assets.append(
+                                {
+                                    "page": page_no,
+                                    "kind": "figure",
+                                    "label": f"Figure {caption['label_num']}",
+                                    "bbox": list(fallback),
+                                    "caption": caption["text"],
+                                    "caption_bbox": caption["bbox"],
+                                    "columnScope": caption.get("columnScope", "full"),
+                                    "borderless": True,
+                                }
+                            )
+                            used_caption_ids.add(id(caption))
                 elif caption["label_kind"] == "table":
-                    region = _table_region(page, caption, page_height)
+                    rule_region = _table_region(page, caption, page_height)
+                    borderless_region = _borderless_table_region(
+                        lines,
+                        caption,
+                        body_size,
+                        float(page.width),
+                        page_height,
+                    )
+                    if borderless_region is not None:
+                        region = borderless_region
+                        borderless = True
+                    else:
+                        region = rule_region
+                        borderless = False
                     if region is not None:
                         assets.append(
                             {
@@ -1150,6 +1521,7 @@ def detect_assets(
                                 "bbox": list(region),
                                 "caption": caption["text"],
                                 "caption_bbox": caption["bbox"],
+                                "borderless": borderless,
                             }
                         )
                         used_caption_ids.add(id(caption))
@@ -1406,9 +1778,9 @@ def _table_body_lines(asset: Dict[str, Any], lines: List[Dict[str, Any]]) -> Lis
 def _algorithm_steps(
     body_lines: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
-    """Preserve numbered algorithm steps and their control-flow depth."""
+    """Preserve algorithm lines and their control-flow depth."""
     steps: List[Dict[str, Any]] = []
-    depth = 0
+    stack: List[str] = []
     left_edges = [
         float(line["x0"])
         for line in body_lines
@@ -1420,17 +1792,31 @@ def _algorithm_steps(
         if ALGORITHM_BOUNDARY_RE.fullmatch(text):
             continue
         match = ALGORITHM_STEP_RE.match(text)
-        if not match:
-            continue
-        statement = match.group("text").strip()
+        statement = match.group("text").strip() if match else text
         upper = statement.upper()
-        if re.match(r"^END\s+(?:IF|WHILE)\b", upper):
-            depth = max(0, depth - 1)
-        elif re.match(r"^ELSE\s+IF\b", upper):
-            depth = max(0, depth - 1)
+        line_depth: Optional[int] = None
+        is_else = bool(re.match(r"^ELSE(?:\s+IF)?\b", upper))
+        if re.match(r"^END\s*WHILE\b", upper):
+            index = next((i for i in range(len(stack) - 1, -1, -1) if stack[i] == "WHILE"), None)
+            stack = stack[:index] if index is not None else []
+        elif re.match(r"^END\s*(?:FUNCTION|PROCEDURE)\b", upper):
+            index = next(
+                (i for i in range(len(stack) - 1, -1, -1) if stack[i] in ("FUNCTION", "PROCEDURE")),
+                None,
+            )
+            stack = stack[:index] if index is not None else []
+        elif re.match(r"^END\s*IF\b", upper):
+            index = next((i for i in range(len(stack) - 1, -1, -1) if stack[i] == "IF"), None)
+            stack = stack[:index] if index is not None else []
+        elif is_else:
+            index = next((i for i in range(len(stack) - 1, -1, -1) if stack[i] == "IF"), None)
+            if index is not None:
+                stack = stack[:index]
+                line_depth = len(stack)
+        depth = len(stack) if line_depth is None else line_depth
         steps.append(
             {
-                "number": int(match.group("number")),
+                "number": int(match.group("number")) if match else None,
                 "text": text,
                 "depth": depth,
                 "indent": round(max(0.0, float(line["x0"]) - left), 2),
@@ -1438,11 +1824,16 @@ def _algorithm_steps(
                 "page": line["page"],
             }
         )
-        if (
-            re.match(r"^(?:WHILE|IF|ELSE\s+IF)\b", upper)
-            or ("THEN" in upper and re.match(r"^(?:IF|ELSE\s+IF)\b", upper))
-        ):
-            depth += 1
+        if re.match(r"^WHILE\b", upper):
+            stack.append("WHILE")
+        elif re.match(r"^IF\b|^ELSE\s+IF\b", upper):
+            stack.append("IF")
+        elif re.match(r"^(?:FOR|FOREACH)\b", upper):
+            stack.append("FOR")
+        elif re.match(r"^(?:FUNCTION|PROCEDURE)\b", upper):
+            stack.append("FUNCTION")
+        elif is_else:
+            stack.append("IF")
     return steps
 
 
@@ -1465,31 +1856,44 @@ def _collect_algorithm(
     scope = lines[caption_index].get("columnScope")
     body: List[Dict[str, Any]] = []
     cursor = caption_end
-    found_begin = False
-    found_end = False
-    while cursor < len(lines):
-        line = lines[cursor]
-        if int(line["page"]) != page or line.get("columnScope") != scope:
-            break
-        text = clean_text(line["text"])
-        if not found_begin:
-            if re.fullmatch(r"BEGIN", text, re.I):
-                found_begin = True
+    if cursor < len(lines) and re.fullmatch(r"BEGIN", clean_text(lines[cursor]["text"]), re.I):
+        found_end = False
+        while cursor < len(lines):
+            line = lines[cursor]
+            if int(line["page"]) != page or line.get("columnScope") != scope:
+                break
+            text = clean_text(line["text"])
+            if re.fullmatch(r"END", text, re.I):
                 body.append(line)
                 cursor += 1
-                continue
-            break
-        if re.fullmatch(r"END", text, re.I):
+                found_end = True
+                break
+            if line.get("role") == "caption":
+                break
             body.append(line)
             cursor += 1
-            found_end = True
-            break
-        if line.get("role") == "caption":
-            break
-        body.append(line)
-        cursor += 1
-    if not found_begin or not found_end:
-        return None
+        if not found_end:
+            return None
+    else:
+        body_size = estimate_body_size(lines)
+        while cursor < len(lines):
+            line = lines[cursor]
+            if int(line["page"]) != page or line.get("columnScope") != scope:
+                break
+            text = clean_text(line["text"])
+            role = line.get("role")
+            if role == "caption" or (role in ("heading", "references_heading") and text):
+                break
+            size = float(line.get("size") or 0.0)
+            if body and size >= body_size - 0.25:
+                break
+            indented = float(line.get("x0") or 0.0) > float(lines[caption_index].get("x0") or 0.0) + 2.0
+            if not body and not (ALGORITHM_CUE_RE.match(text) or indented or size <= body_size - 0.3):
+                break
+            body.append(line)
+            cursor += 1
+        if len(body) < 2:
+            return None
     steps = _algorithm_steps(body)
     if len(steps) < 2:
         return None
@@ -1572,22 +1976,38 @@ def build_blocks(lines: List[Dict[str, Any]], assets: List[Dict[str, Any]]) -> L
             continue
 
         if role == "heading":
-            match = HEADING_RE.match(line["text"])
+            heading_group = [line]
+            j = i + 1
+            while (
+                j < len(lines)
+                and lines[j].get("role") == "heading_continuation"
+                and lines[j]["page"] == line["page"]
+                and lines[j].get("columnScope") == line.get("columnScope")
+            ):
+                heading_group.append(lines[j])
+                j += 1
+            heading_text = join_lines([item["text"] for item in heading_group])
+            match = HEADING_RE.match(heading_text)
             level = len(match.group("num").split(".")) if match else 1
-            section = line["text"]
+            section = heading_text
             blocks.append(
                 {
                     "type": "heading",
-                    "text": line["text"],
+                    "text": heading_text,
                     "level": level,
                     "section": section,
                     "page": line["page"],
-                    "bbox": [line["x0"], line["top"], line["x1"], line["bottom"]],
-                    "sourceIds": [line["id"]],
+                    "bbox": _union_bbox(
+                        [
+                            (item["x0"], item["top"], item["x1"], item["bottom"])
+                            for item in heading_group
+                        ]
+                    ),
+                    "sourceIds": [item["id"] for item in heading_group],
                 }
             )
             in_references = False
-            i += 1
+            i = j
             continue
 
         if role == "references_heading":
@@ -1618,7 +2038,7 @@ def build_blocks(lines: List[Dict[str, Any]], assets: List[Dict[str, Any]]) -> L
                 group.append(nxt)
                 j += 1
             text = join_lines([item["text"] for item in group])
-            text = re.sub(r"^Abstract\b\s*:?\s*", "", text, flags=re.I)
+            text = re.sub(r"^Abstract\b\s*[:—–-]?\s*", "", text, flags=re.I)
             blocks.append(
                 {
                     "type": "abstract",
@@ -1635,7 +2055,7 @@ def build_blocks(lines: List[Dict[str, Any]], assets: List[Dict[str, Any]]) -> L
             continue
 
         if role == "keywords":
-            text = re.sub(r"^Keywords\s*:\s*", "", line["text"], flags=re.I)
+            text = re.sub(r"^(?:Keywords|Index Terms)\s*[:—–-]\s*", "", line["text"], flags=re.I)
             blocks.append(
                 {
                     "type": "keywords",
@@ -1764,7 +2184,7 @@ def build_blocks(lines: List[Dict[str, Any]], assets: List[Dict[str, Any]]) -> L
                 if nxt["role"] in ("furniture", "figure_label", "table_body"):
                     j += 1
                     continue
-                if nxt["role"] not in ("prose", "meta"):
+                if nxt["role"] != "prose":
                     break
                 group.append(nxt)
                 j += 1
@@ -1899,13 +2319,17 @@ def extract_metadata(lines: List[Dict[str, Any]], pdf_path: Path, page_count: in
                 break
             group.append(line)
         abstract = re.sub(
-            r"^Abstract\b\s*:?\s*",
+            r"^Abstract\b\s*[:—–-]?\s*",
             "",
             _join_lines([line["text"] for line in group]),
             flags=re.I,
         )
     keywords_line = next((line for line in first_page if line["role"] == "keywords"), None)
-    keywords = re.sub(r"^Keywords\s*:\s*", "", keywords_line["text"], flags=re.I) if keywords_line else ""
+    keywords = (
+        re.sub(r"^(?:Keywords|Index Terms)\s*[:—–-]\s*", "", keywords_line["text"], flags=re.I)
+        if keywords_line
+        else ""
+    )
     first_text = "\n".join(line["text"] for line in first_page)
     doi_match = DOI_RE.search(first_text)
     arxiv_match = ARXIV_RE.search(first_text)
@@ -2092,6 +2516,9 @@ def build_mirrordoc(
 
 
 def main() -> int:
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("pdf", type=Path)
     parser.add_argument("--out", type=Path, required=True)
@@ -2123,6 +2550,7 @@ def main() -> int:
     )
     annotate_table_bodies(lines, assets)
     assign_figure_labels(lines, assets)
+    annotate_figure_texts(lines, assets)
     crop_assets(args.pdf, assets, args.out, dpi=args.dpi)
     progress(args.progress, "crop", "图、表、公式已搬出")
     if not args.skip_source_pages:
