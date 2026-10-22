@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto'
 import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
+import { gzipSync } from 'node:zlib'
 
 const root = path.resolve(import.meta.dirname, '..', '..')
 const dist = path.join(root, 'dist')
@@ -85,7 +86,12 @@ async function createAuditLabTarball() {
     await cp(path.join(root, 'THIRD_PARTY_NOTICES.md'), path.join(staging, 'THIRD_PARTY_NOTICES.md'))
 
     await rm(artifact, { force: true })
-    run('tar', ['-czf', artifact, '-C', staging, '.'])
+    // 固定 tar 元数据时间，并由 Node 生成无时间戳的 gzip 头，避免同内容
+    // 在不同执行时刻产生不同 SHA。
+    const rawTar = path.join(dist, `.audit-lab-${process.pid}.tar`)
+    run('tar', ['--format=ustar', '--mtime=2026-10-22', '-cf', rawTar, '-C', staging, '.'])
+    await writeFile(artifact, gzipSync(await readFile(rawTar), { level: 9 }))
+    await rm(rawTar, { force: true })
     const list = run('tar', ['-tzf', artifact], { capture: true }).stdout
     const required = [
       './cli.mjs',
