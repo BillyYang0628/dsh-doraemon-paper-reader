@@ -152,7 +152,9 @@ export function cleanOriginalName(raw) {
   } catch {
     // 保留原值；下面的字符清洗仍会兜底。
   }
-  value = path.basename(value).replace(/[\u0000-\u001f<>:"/\\|?*]/g, '_').trim()
+  // basename 必须同时识别 Windows 反斜杠和 POSIX 斜杠；否则同一请求在 Linux
+  // CI 与 Windows 本机得到不同文件名。
+  value = path.posix.basename(value.replace(/\\/g, '/')).replace(/[\u0000-\u001f<>:"/\\|?*]/g, '_').trim()
   if (!value) value = 'paper.pdf'
   if (!value.toLowerCase().endsWith('.pdf')) value += '.pdf'
   return value.slice(0, 180)
