@@ -10,6 +10,17 @@ const root = process.cwd();
 const skipDirs = new Set(['.git', 'node_modules', 'gen', 'work', 'dist']);
 const linkRe = /\]\(([^)]+)\)/g;
 
+function isGeneratedArtifact(absoluteTarget, target) {
+  const normalized = target.replace(/\\/g, '/');
+  if (/^(?:\.\.\/)*(?:工具\/gen|work|dist)(?:\/|$)/.test(normalized)) return true;
+  const relative = path.relative(root, absoluteTarget).split(path.sep);
+  return (
+    (relative[0] === '工具' && relative[1] === 'gen') ||
+    relative[0] === 'work' ||
+    relative[0] === 'dist'
+  );
+}
+
 async function walk(dir, out = []) {
   for (const entry of await readdir(dir, { withFileTypes: true })) {
     if (entry.name.startsWith('.') && entry.name !== '.dsh') continue;
@@ -44,8 +55,10 @@ for (const file of files) {
     if (/^(https?:|mailto:|#)/.test(raw)) continue;
     const target = decodeURI(raw.split('#')[0]);
     if (!target) continue;
+    const absoluteTarget = path.resolve(path.dirname(file), target);
+    if (isGeneratedArtifact(absoluteTarget, target)) continue;
     checked += 1;
-    if (!(await exists(path.resolve(path.dirname(file), target)))) {
+    if (!(await exists(absoluteTarget))) {
       broken.push(`${path.relative(root, file)} -> ${raw}`);
     }
   }
