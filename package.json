@@ -51,7 +51,7 @@
     "node": "^22.19.0 || >=24"
   },
   "scripts": {
-    "test": "node --test",
+    "test": "node --test test/*.test.mjs audit-lab/test/*.test.mjs",
     "test:offline": "npm test && python 工具/pdf-pipeline/test_pipeline.py && npm run test:docs && node audit-lab/cli.mjs self-check",
     "test:docs": "node 工具/check-doc-links.mjs",
     "test:pdf-regression": "python 工具/pdf-pipeline/regression_check.py --keep-going",
