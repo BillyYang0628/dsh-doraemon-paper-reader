@@ -63,10 +63,25 @@ def render_asset(block: Dict[str, Any]) -> str:
             f'<span class="asset-note">原样裁剪，待转写为 LaTeX</span></figcaption>'
             f"{page_badge(block)}{locator(block)}</figure>"
         )
+    structure = block.get("tableStructure") or {}
+    structure_html = ""
+    if kind == "table" and structure:
+        structure_html = (
+            '<div class="table-structure-meta">'
+            f"结构识别：{int(structure.get('rowCount') or 0)} 行 × "
+            f"{int(structure.get('columnCount') or 0)} 列"
+            + (
+                f" · 续表，承接 p.{int(block.get('continuationOfPage') or 0)}"
+                if block.get("continuation")
+                else ""
+            )
+            + " · 请与原表核对</div>"
+        )
     return (
         f'<figure class="asset {esc(kind)}" id="{esc(block.get("id", ""))}">'
         f'{image}<figcaption><span class="asset-label">{esc(label)}</span>'
         f'{esc(caption_text)}</figcaption>'
+        f"{structure_html}"
         f"{page_badge(block)}{locator(block)}</figure>"
     )
 
@@ -256,6 +271,7 @@ h1 {{ font-size: clamp(28px, 4vw, 42px); line-height: 1.16; letter-spacing: -.02
 .separator {{ height: 1px; margin: 22px 0; border: 0; background: var(--rule); }}
 .algorithm {{ margin: 24px 0 28px; padding: 12px 14px; background: #f8f6ef; border: 1px solid var(--rule); border-radius: 10px; }}
 .algorithm-rule {{ height: 1px; margin: 10px 0; border: 0; background: var(--rule); }}
+.table-structure-meta {{ margin-top: 7px; color: var(--muted); font-size: 12px; }}
 .asset {{ margin: 26px 0 28px; padding: 12px; background: #fffdf8; border: 1px solid var(--paper-edge); border-radius: 12px; }}
 .asset img {{ display: block; max-width: 100%; height: auto; margin: 0 auto; border-radius: 5px; }}
 .asset figcaption {{ margin-top: 10px; color: var(--muted); font-size: 14px; line-height: 1.55; }}

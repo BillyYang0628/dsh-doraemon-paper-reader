@@ -146,7 +146,13 @@ function guessTitle(segments, authors = '') {
         segment.length >= 12 &&
         words.length >= 3 &&
         /[A-Za-z]{4}/.test(segment) &&
-        !/^(?:journal|proceedings|vol\.?|pp\.?|doi|https?:|available|retrieved|isbn)\b/i.test(segment) &&
+        !(
+          (segment.match(/,/g) || []).length >= 4 &&
+          /\band\b/i.test(segment)
+        ) &&
+        !/^(?:journal|proceedings|vol\.?|pp\.?|doi|https?:|available|retrieved|isbn|arxiv preprint|in proceedings|in findings|in advances)\b/i.test(
+          segment,
+        ) &&
         segment !== authors
       )
     })
@@ -175,6 +181,7 @@ export function extractReferenceFields(text) {
     .filter((segment) => segment.length > 3)
   let authors = ''
   let title = ''
+  let venue = ''
   if (parenthetical) {
     authors = withoutDoi.slice(0, parenthetical.index).trim().replace(/[.,;]+$/, '')
     const after = withoutDoi
@@ -182,15 +189,49 @@ export function extractReferenceFields(text) {
       .trim()
       .replace(/^[.:;,\-–—\s]+/, '')
     title = after.split(/\.\s+/)[0].trim()
+    venue = after.split(/\.\s+/).slice(1).find(Boolean) || ''
   }
   if (!title || title.length < 8) {
     const authorLike = segments[0] && looksLikeAuthorList(segments[0]) ? segments[0] : ''
     authors = authors || authorLike
     title = guessTitle(segments, authors)
   }
-  title = title.replace(/\s*\(?(?:19|20)\d{2}[a-z]?\)?.*$/, '').trim().slice(0, 320)
+  if (looksLikeAuthorList(title)) {
+    const replacement = guessTitle(segments, authors)
+    if (replacement && replacement !== title) title = replacement
+  }
+  if (/^(?:arxiv preprint|available online|in proceedings|in findings)\b/i.test(title)) {
+    const replacement = guessTitle(segments, authors)
+    if (replacement) title = replacement
+  }
+  const titleKey = title.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+  const titleIndex = segments.findIndex((segment) => {
+    const segmentKey = segment.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+    return titleKey && (segmentKey.includes(titleKey) || titleKey.includes(segmentKey))
+  })
+  if (!venue && titleIndex >= 0) {
+    venue =
+      segments.slice(titleIndex + 1).find(
+        (segment) =>
+          segment.length >= 3 &&
+          !/^(?:doi|https?:|vol\.?|pp\.?|isbn|available|retrieved)\b/i.test(segment),
+      ) || ''
+  }
+  title = title
+    .replace(
+      /\s*,?\s*(?:CoRR|arXiv)\s*,?\s*(?:abs\/)?\d{4}\.\d{4,5}(?:v\d+)?(?:\s*,?\s*(?:19|20)\d{2}[a-z]?)?\s*,?\s*$/i,
+      '',
+    )
+    .replace(/\s*\(?(?:19|20)\d{2}[a-z]?\)?.*$/, '')
+    .trim()
+    .slice(0, 320)
   authors = authors.replace(/^\d+[.)]\s*/, '').trim().slice(0, 320)
   const year = years.length ? years[years.length - 1] : ''
+  venue = cleanReferenceText(venue)
+    .replace(/\s+\d+\s*(?:\(\d+\))?\s*[,:].*$/, '')
+    .replace(/\s+\d+\s*[-–]\s*\d+.*$/, '')
+    .trim()
+    .slice(0, 180)
   return {
     raw,
     text: raw,
@@ -198,6 +239,7 @@ export function extractReferenceFields(text) {
     arxiv: identifiers.arxiv || normalizeArxiv(raw) || '',
     title,
     authors,
+    venue,
     year,
     query: title.slice(0, 700) || withoutDoi.slice(0, 700),
   }

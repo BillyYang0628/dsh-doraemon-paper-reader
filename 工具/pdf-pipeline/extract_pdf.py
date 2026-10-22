@@ -249,6 +249,9 @@ def _detect_column_split(page: pdfplumber.page.Page, region_top: float) -> Optio
 
 def _is_rotated_page(page: pdfplumber.page.Page) -> bool:
     """True when most visible glyphs are sideways (a full-page rotated table)."""
+    rotation = abs(int(getattr(page, "rotation", 0) or 0)) % 180
+    if rotation == 90 and float(page.width) > float(page.height):
+        return True
     text_chars = [char for char in page.chars if char.get("text", "").strip()]
     if not text_chars:
         return False
@@ -970,9 +973,25 @@ def detect_content_rules(
                 else:
                     duplicate["x0"] = min(float(duplicate["x0"]), float(rule["x0"]))
                     duplicate["x1"] = max(float(duplicate["x1"]), float(rule["x1"]))
+            dense_rules = set()
+            for index, rule in enumerate(deduped):
+                width = max(1.0, float(rule["x1"]) - float(rule["x0"]))
+                for other in deduped[index + 1 :]:
+                    if float(other["top"]) - float(rule["top"]) > 12:
+                        break
+                    overlap = max(
+                        0.0,
+                        min(float(rule["x1"]), float(other["x1"]))
+                        - max(float(rule["x0"]), float(other["x0"])),
+                    )
+                    if overlap / width >= 0.7:
+                        dense_rules.add(id(rule))
+                        dense_rules.add(id(other))
 
             page_text = by_page.get(page_no, [])
             for rule in deduped:
+                if id(rule) in dense_rules:
+                    continue
                 x0 = float(rule["x0"])
                 x1 = float(rule["x1"])
                 top = float(rule["top"])
@@ -1436,7 +1455,7 @@ def _borderless_table_region(
         role = line.get("role")
         if include_scopes is not None and line.get("columnScope") not in include_scopes:
             continue
-        if role == "caption" and CAPTION_RE.match(text):
+        if role == "caption":
             break
         if role in ("heading", "references_heading") and text:
             break
@@ -1457,6 +1476,342 @@ def _borderless_table_region(
     bbox[0] = min(bbox[0], float(caption["bbox"][0]))
     bbox[2] = max(bbox[2], float(caption["bbox"][2]))
     return (bbox[0] - 2, bbox[1] - 2, bbox[2] + 2, min(page_height - 35, bbox[3] + 3))
+
+
+def _borderless_table_region_above(
+    lines: List[Dict[str, Any]],
+    caption: Dict[str, Any],
+    body_size: float,
+    page_width: float,
+) -> Optional[Tuple[float, float, float, float]]:
+    """Infer a borderless table placed above its caption."""
+    scope = caption.get("columnScope")
+    caption_center = (float(caption["bbox"][0]) + float(caption["bbox"][2])) / 2
+    if scope == "full":
+        scope = "full"
+    candidates: List[Dict[str, Any]] = []
+    table_like_count = 0
+    last_top = float(caption["top"])
+    for line in sorted(
+        (
+            item
+            for item in lines
+            if item["page"] == caption["page"]
+            and item.get("columnScope") == scope
+            and float(item["bottom"]) <= float(caption["top"]) + 1
+        ),
+        key=lambda item: float(item["top"]),
+        reverse=True,
+    ):
+        gap = last_top - float(line["bottom"])
+        role = line.get("role")
+        text = clean_text(line["text"])
+        size = float(line.get("size") or 0.0)
+        if gap > 18:
+            break
+        if role in ("heading", "references_heading", "caption"):
+            break
+        if role in ("furniture", "meta"):
+            continue
+        table_row_like = (
+            float(line.get("maxCenterGap") or 0) >= 20
+            or int(line.get("internalGapCount") or 0) >= 2
+        )
+        if table_row_like:
+            table_like_count += 1
+        if (
+            size >= body_size - 0.15
+            and len(text.split()) >= 12
+            and not table_row_like
+        ):
+            break
+        if len(text.split()) < 2:
+            continue
+        candidates.append(line)
+        last_top = float(line["top"])
+        if len(candidates) >= 100:
+            break
+    if len(candidates) < 3:
+        return None
+    bbox = _union_bbox(
+        [(item["x0"], item["top"], item["x1"], item["bottom"]) for item in candidates]
+    )
+    bbox[0] = min(bbox[0], float(caption["bbox"][0]))
+    bbox[2] = max(bbox[2], float(caption["bbox"][2]))
+    if table_like_count < 2 or bbox[2] - bbox[0] < page_width * 0.35:
+        return None
+    if (
+        abs(bbox[0] - float(caption["bbox"][0])) > 40
+        and abs(((bbox[0] + bbox[2]) / 2) - caption_center) > page_width * 0.25
+    ):
+        return None
+    return (bbox[0] - 2, max(40.0, bbox[1] - 2), bbox[2] + 2, float(caption["top"]) - 2)
+
+
+def _table_region_after_caption(
+    lines: List[Dict[str, Any]],
+    caption: Dict[str, Any],
+    body_size: float,
+    page_width: float,
+    page_height: float,
+) -> Optional[Tuple[float, float, float, float]]:
+    """Infer a compact table body immediately after an above-table caption."""
+    scope = caption.get("columnScope")
+    caption_center = (float(caption["bbox"][0]) + float(caption["bbox"][2])) / 2
+    if scope == "full":
+        include_scopes = None
+    else:
+        include_scopes = {scope}
+    candidates: List[Dict[str, Any]] = []
+    last_bottom = float(caption["bottom"])
+    for line in sorted(
+        (
+            item
+            for item in lines
+            if item["page"] == caption["page"]
+            and float(item["top"]) >= float(caption["bottom"])
+        ),
+        key=lambda item: float(item["top"]),
+    ):
+        top = float(line["top"])
+        if top > page_height - 35:
+            break
+        if include_scopes is not None and line.get("columnScope") not in include_scopes:
+            continue
+        role = line.get("role")
+        text = clean_text(line.get("text"))
+        size = float(line.get("size") or 0.0)
+        if top - last_bottom > 18:
+            break
+        if role in ("heading", "references_heading", "caption"):
+            break
+        if role in ("furniture", "meta"):
+            continue
+        table_row_like = (
+            float(line.get("maxCenterGap") or 0) >= 20
+            or int(line.get("internalGapCount") or 0) >= 2
+        )
+        if (
+            size >= body_size - 0.15
+            and len(text.split()) >= 5
+            and not table_row_like
+        ):
+            break
+        if len(text.split()) < 2:
+            continue
+        candidates.append(line)
+        last_bottom = max(last_bottom, float(line["bottom"]))
+        if len(candidates) >= 120:
+            break
+    if len(candidates) < 3:
+        return None
+    bbox = _union_bbox(
+        [(item["x0"], item["top"], item["x1"], item["bottom"]) for item in candidates]
+    )
+    bbox[0] = min(bbox[0], float(caption["bbox"][0]))
+    bbox[2] = max(bbox[2], float(caption["bbox"][2]))
+    if (
+        abs(bbox[0] - float(caption["bbox"][0])) > 40
+        and abs(((bbox[0] + bbox[2]) / 2) - caption_center) > page_width * 0.25
+    ):
+        return None
+    return (bbox[0] - 2, float(caption["bottom"]) + 1, bbox[2] + 2, bbox[3] + 3)
+
+
+def _table_structure_from_words(
+    words: List[Dict[str, Any]],
+    bbox: Tuple[float, float, float, float],
+) -> Optional[Dict[str, Any]]:
+    """Recover a conservative row/column grid from positioned words."""
+    x0, top, x1, bottom = bbox
+    inside = []
+    for word in words:
+        wx0 = float(word.get("x0") or 0)
+        wx1 = float(word.get("x1") or 0)
+        wt = float(word.get("top") or 0)
+        wb = float(word.get("bottom") or 0)
+        text = clean_text(word.get("text"))
+        if not text:
+            continue
+        center_x = (wx0 + wx1) / 2
+        center_y = (wt + wb) / 2
+        if x0 - 2 <= center_x <= x1 + 2 and top - 2 <= center_y <= bottom + 2:
+            inside.append(word)
+    if len(inside) < 4:
+        return None
+
+    row_clusters: List[List[Dict[str, Any]]] = []
+    for word in sorted(inside, key=lambda item: (float(item["top"]), float(item["x0"]))):
+        center = (float(word["top"]) + float(word["bottom"])) / 2
+        target = None
+        for cluster in reversed(row_clusters[-4:]):
+            ref = cluster[0]
+            ref_center = (float(ref["top"]) + float(ref["bottom"])) / 2
+            if abs(center - ref_center) <= 2.6:
+                target = cluster
+                break
+        if target is None:
+            row_clusters.append([word])
+        else:
+            target.append(word)
+    row_clusters.sort(key=lambda cluster: min(float(item["top"]) for item in cluster))
+    if len(row_clusters) < 2:
+        return None
+
+    starts: List[float] = []
+    for cluster in row_clusters:
+        row_starts: List[float] = []
+        for word in sorted(cluster, key=lambda item: float(item["x0"])):
+            value = round(float(word["x0"]), 1)
+            if all(abs(value - existing) > 12 for existing in row_starts):
+                row_starts.append(value)
+        if len(row_starts) >= 2:
+            starts = row_starts
+            break
+    if not starts:
+        raw_starts = sorted(round(float(word["x0"]), 1) for word in inside)
+        clusters: List[List[float]] = []
+        for value in raw_starts:
+            if not clusters or value - clusters[-1][-1] > 8:
+                clusters.append([value])
+            else:
+                clusters[-1].append(value)
+        threshold = max(2, math.ceil(len(row_clusters) * 0.45))
+        starts = [
+            sum(cluster) / len(cluster)
+            for cluster in clusters
+            if len(cluster) >= threshold
+        ]
+    if len(starts) < 2:
+        return None
+
+    rows = []
+    for cluster in row_clusters:
+        cells = ["" for _ in starts]
+        for word in sorted(cluster, key=lambda item: float(item["x0"])):
+            wx0 = float(word["x0"])
+            wx1 = float(word["x1"])
+            center_x = (wx0 + wx1) / 2
+            column = min(
+                range(len(starts)),
+                key=lambda index: abs(center_x - starts[index]),
+            )
+            pieces = cells[column].split()
+            pieces.append(clean_text(word["text"]))
+            cells[column] = clean_text(" ".join(pieces))
+        if any(cells):
+            rows.append(
+                {
+                    "cells": cells,
+                    "rowSpan": [1] * len(cells),
+                    "colSpan": [1] * len(cells),
+                }
+            )
+    if len(rows) < 2:
+        return None
+    merged_cells = 0
+    for row_index, row in enumerate(rows):
+        cells = row["cells"]
+        if not cells or not cells[0]:
+            continue
+        span = 1
+        cursor = row_index + 1
+        while cursor < len(rows) and not rows[cursor]["cells"][0]:
+            span += 1
+            cursor += 1
+        if span > 1:
+            row["rowSpan"][0] = span
+            for covered in range(row_index + 1, cursor):
+                rows[covered]["coveredByRow"] = row_index
+            merged_cells += 1
+    return {
+        "mode": "word-grid",
+        "headerRows": 1,
+        "rowCount": len(rows),
+        "columnCount": len(starts),
+        "columnStarts": [round(value, 2) for value in starts],
+        "rows": rows,
+        "mergedCells": merged_cells,
+    }
+
+
+def _infer_table_structure(
+    page: pdfplumber.page.Page,
+    bbox: Tuple[float, float, float, float],
+    prefer_words: bool = False,
+) -> Optional[Dict[str, Any]]:
+    if prefer_words:
+        try:
+            return _table_structure_from_words(page.extract_words(), bbox)
+        except Exception:
+            return None
+    try:
+        candidates = []
+        for table in page.find_tables():
+            tx0, ttop, tx1, tbottom = [float(value) for value in table.bbox]
+            center_x = (tx0 + tx1) / 2
+            center_y = (ttop + tbottom) / 2
+            overlap_w = max(0.0, min(bbox[2], tx1) - max(bbox[0], tx0))
+            overlap_h = max(0.0, min(bbox[3], tbottom) - max(bbox[1], ttop))
+            overlap = overlap_w * overlap_h
+            asset_area = max(1.0, (bbox[2] - bbox[0]) * (bbox[3] - bbox[1]))
+            center_inside = (
+                bbox[0] - 4 <= center_x <= bbox[2] + 4
+                and bbox[1] - 4 <= center_y <= bbox[3] + 4
+            )
+            if overlap / asset_area < 0.2 and not center_inside:
+                continue
+            rows = table.extract()
+            if not rows:
+                continue
+            column_count = max((len(row) for row in rows), default=0)
+            if len(rows) >= 2 and column_count >= 2:
+                candidates.append(
+                    (
+                        len(rows) * column_count,
+                        rows,
+                        [tx0, ttop, tx1, tbottom],
+                    )
+                )
+        if candidates:
+            _, raw_rows, source_bbox = max(candidates, key=lambda item: item[0])
+            column_count = max(len(row) for row in raw_rows)
+            rows = []
+            for raw_row in raw_rows:
+                cells = [clean_text(cell or "") for cell in raw_row]
+                cells.extend([""] * (column_count - len(cells)))
+                rows.append(
+                    {
+                        "cells": cells,
+                        "rowSpan": [1] * column_count,
+                        "colSpan": [1] * column_count,
+                    }
+                )
+            return {
+                "mode": "line-grid",
+                "headerRows": 1,
+                "rowCount": len(rows),
+                "columnCount": column_count,
+                "rows": rows,
+                "sourceBbox": source_bbox,
+                "mergedCells": 0,
+            }
+    except Exception:
+        pass
+    try:
+        words = page.extract_words()
+    except Exception:
+        return None
+    return _table_structure_from_words(words, bbox)
+
+
+def _table_structure_text(structure: Optional[Dict[str, Any]]) -> str:
+    if not structure:
+        return ""
+    return "\n".join(
+        " | ".join(str(cell or "") for cell in row.get("cells") or [])
+        for row in structure.get("rows") or []
+    )
 
 
 def _borderless_figure_region(
@@ -1655,6 +2010,7 @@ def detect_assets(
                             used_caption_ids.add(id(caption))
                 elif caption["label_kind"] == "table":
                     rule_region = _table_region(page, caption, page_height)
+                    above_region = None
                     borderless_region = _borderless_table_region(
                         lines,
                         caption,
@@ -1662,6 +2018,33 @@ def detect_assets(
                         float(page.width),
                         page_height,
                     )
+                    rule_height = (
+                        float(rule_region[3]) - float(rule_region[1])
+                        if rule_region is not None
+                        else 0.0
+                    )
+                    if (
+                        borderless_region is None
+                        and rule_region is not None
+                        and rule_height < 60
+                    ):
+                        local_region = _table_region_after_caption(
+                            lines,
+                            caption,
+                            body_size,
+                            float(page.width),
+                            page_height,
+                        )
+                        if local_region is not None:
+                            borderless_region = local_region
+                    if borderless_region is None:
+                        above_region = _borderless_table_region_above(
+                            lines,
+                            caption,
+                            body_size,
+                            float(page.width),
+                        )
+                        borderless_region = above_region
                     if borderless_region is not None:
                         region = borderless_region
                         borderless = True
@@ -1669,6 +2052,11 @@ def detect_assets(
                         region = rule_region
                         borderless = False
                     if region is not None:
+                        table_structure = _infer_table_structure(
+                            page,
+                            tuple(float(value) for value in region),
+                            prefer_words=borderless,
+                        )
                         assets.append(
                             {
                                 "page": page_no,
@@ -1678,6 +2066,7 @@ def detect_assets(
                                 "caption": caption["text"],
                                 "caption_bbox": caption["bbox"],
                                 "borderless": borderless,
+                                "tableStructure": table_structure,
                             }
                         )
                         used_caption_ids.add(id(caption))
@@ -1699,6 +2088,108 @@ def detect_assets(
                     "caption_bbox": caption["bbox"],
                 }
             )
+
+    table_pages = {
+        int(asset.get("page") or 0)
+        for asset in assets
+        if asset.get("kind") == "table"
+    }
+    with pdfplumber.open(str(pdf_path)) as pdf:
+        for page_no in range(2, page_count + 1):
+            if page_no in table_pages:
+                continue
+            previous = sorted(
+                (
+                    asset
+                    for asset in assets
+                    if asset.get("kind") == "table"
+                    and int(asset.get("page") or 0) == page_no - 1
+                ),
+                key=lambda asset: float(asset["bbox"][1]),
+            )
+            if not previous:
+                continue
+            page = pdf.pages[page_no - 1]
+            if _is_rotated_page(page):
+                continue
+            try:
+                candidates = page.find_tables()
+            except Exception:
+                continue
+            valid = []
+            for table in candidates:
+                rows = table.extract()
+                if not rows:
+                    continue
+                column_count = max((len(row) for row in rows), default=0)
+                nonempty = sum(
+                    1
+                    for row in rows
+                    for cell in row
+                    if clean_text(cell or "")
+                )
+                tx0, top, tx1, bottom = [float(value) for value in table.bbox]
+                if (
+                    len(rows) >= 2
+                    and column_count >= 3
+                    and nonempty >= 8
+                    and tx1 - tx0 >= float(page.width) * 0.35
+                    and bottom - top >= 45
+                ):
+                    valid.append((nonempty, table))
+            if not valid:
+                continue
+            _, table = max(valid, key=lambda item: item[0])
+            bbox = [float(value) for value in table.bbox]
+            structure = _infer_table_structure(
+                page,
+                tuple(bbox),
+            )
+            if not structure or int(structure.get("rowCount") or 0) < 2:
+                continue
+            parent = previous[-1]
+            label = str(parent.get("label") or "Table")
+            group = str(
+                parent.get("continuationGroup")
+                or f"table-{int(parent.get('page') or page_no - 1):03d}"
+            )
+            parent["continuationGroup"] = group
+            parent["continuationIndex"] = int(parent.get("continuationIndex") or 0)
+            assets.append(
+                {
+                    "page": page_no,
+                    "kind": "table",
+                    "label": label,
+                    "bbox": bbox,
+                    "caption": f"{label}. Continued table on page {page_no}.",
+                    "text": _table_structure_text(structure),
+                    "tableStructure": structure,
+                    "continuation": True,
+                    "continuationOfPage": page_no - 1,
+                    "continuationGroup": group,
+                    "continuationIndex": int(parent.get("continuationIndex") or 0) + 1,
+                    "syntheticTable": True,
+                }
+            )
+
+    with pdfplumber.open(str(pdf_path)) as pdf:
+        for asset in assets:
+            if (
+                asset.get("kind") != "table"
+                or asset.get("tableStructure")
+                or asset.get("rotatedPage")
+            ):
+                continue
+            page_no = int(asset.get("page") or 0)
+            if not 1 <= page_no <= len(pdf.pages):
+                continue
+            structure = _infer_table_structure(
+                pdf.pages[page_no - 1],
+                tuple(float(value) for value in asset["bbox"]),
+                prefer_words=bool(asset.get("borderless")),
+            )
+            if structure:
+                asset["tableStructure"] = structure
 
     assets.sort(key=lambda item: (item["page"], item["bbox"][1], item["bbox"][0]))
     return assets
@@ -1754,6 +2245,10 @@ def rotated_table_assets(pdf_path: Path, rotated_pages: set[int]) -> List[Dict[s
                 # Table titles are reversed by the 90/270-degree glyph matrix.
                 label = "Table 2" if re.search(r"2elbaT|elbaT\s*\.?\s*2", raw, re.I) else "Table"
                 caption = f"{label}. Rotated table on page {page_no}; preserved as an image and rotated upright."
+                structure = _infer_table_structure(
+                    pdf.pages[page_no - 1],
+                    (0.0, 0.0, width, height),
+                )
                 assets.append(
                     {
                         "page": page_no,
@@ -1762,12 +2257,34 @@ def rotated_table_assets(pdf_path: Path, rotated_pages: set[int]) -> List[Dict[s
                         "bbox": [0.0, 0.0, width, height],
                         "caption": caption,
                         "text": raw,
+                        "tableStructure": structure,
                         "rotatedPage": True,
                         "rotate": -90,
+                        "syntheticTable": True,
                     }
                 )
     finally:
         doc.close()
+    assets.sort(key=lambda item: int(item.get("page") or 0))
+    group_id = ""
+    previous = None
+    for asset in assets:
+        if (
+            previous is not None
+            and int(asset.get("page") or 0) == int(previous.get("page") or 0) + 1
+            and str(asset.get("label")) == str(previous.get("label"))
+        ):
+            if not group_id:
+                group_id = f"rotated-table-{int(previous['page']):03d}"
+                previous["continuationGroup"] = group_id
+                previous["continuationIndex"] = 0
+            asset["continuationGroup"] = group_id
+            asset["continuationIndex"] = int(previous.get("continuationIndex") or 0) + 1
+            asset["continuation"] = True
+            asset["continuationOfPage"] = int(previous.get("page") or 0)
+        else:
+            group_id = ""
+        previous = asset
     return assets
 
 
@@ -2276,6 +2793,7 @@ def build_blocks(lines: List[Dict[str, Any]], assets: List[Dict[str, Any]]) -> L
                         "text": join_lines([asset["caption"], body_text]) if body_text else asset["caption"],
                         "caption": asset["caption"],
                         "tableText": asset.get("text") or body_text,
+                        "tableStructure": asset.get("tableStructure"),
                         "label": asset["label"],
                         "asset": asset.get("image", ""),
                         "rotatedPage": bool(asset.get("rotatedPage")),
@@ -2815,19 +3333,26 @@ def main() -> int:
         render_source_pages(args.pdf, args.out, dpi=110)
         progress(args.progress, "pages", "原版页已备好")
     blocks = build_blocks(lines, assets)
-    for asset in rotated_assets:
+    for asset in assets:
+        if asset.get("kind") != "table" or not asset.get("syntheticTable"):
+            continue
         blocks.append(
             {
                 "type": "table",
                 "text": asset["caption"],
                 "caption": asset["caption"],
                 "tableText": asset.get("text", ""),
+                "tableStructure": asset.get("tableStructure"),
                 "label": asset["label"],
                 "page": asset["page"],
                 "bbox": asset["bbox"],
                 "asset": asset.get("image", ""),
                 "sourceIds": [],
-                "rotatedPage": True,
+                "rotatedPage": bool(asset.get("rotatedPage")),
+                "continuation": bool(asset.get("continuation")),
+                "continuationOfPage": asset.get("continuationOfPage"),
+                "continuationGroup": asset.get("continuationGroup"),
+                "continuationIndex": asset.get("continuationIndex"),
             }
         )
     attach_equation_assets(blocks, assets)

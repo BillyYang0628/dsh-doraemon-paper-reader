@@ -11,8 +11,9 @@ description: Use when working inside the dsh-doraemon-paper-reader repository �
 
 - 仓库根：包含 `.git` 的最近祖先（即本仓库目录）。
 - 包名 `dsh-doraemon-paper-reader`，`package.json` 里 `dsh.bundle.patch` 指向 `cordis.patch.yml`。
-- 宿主半区 `src/`（Cordis 插件）；浏览器半区已有主界面与三个页签类型；阅读器页尚未接入 DSH。
-- `工具/pdf-pipeline/` 已有 PDF→MirrorDoc→HTML 提取/重排原型（D-029），是阅读器路线的验证样本。
+- 宿主半区 `src/`（Cordis 插件）；浏览器半区已有主界面、PDF/查询/综述/文档管理/知识中心路径页与阅读页。
+- `工具/pdf-pipeline/` 是 PDF→MirrorDoc→HTML 的共享管线；`audit-lab/` 是与其分离的独立结构审计工作区。
+- 插件运行包与 audit-lab 发布包必须分开生成；后者不得包含 `src/`、角色插画或 DSH 页签入口。
 
 ## 关键环境变量
 
@@ -22,6 +23,9 @@ profile 启动的 Harness 每个 shell 调用都带 `DSH_PROFILE` 与 `DSH_PROFI
 ## 开发回路
 
 ```powershell
+# 0) CI 同等离线验证
+npm run verify:offline
+
 # 1) 纯逻辑测试（不需要 Harness 在跑）
 npm test
 
@@ -36,7 +40,7 @@ dsh plugin --profile dev add link:D:\DSH-Plugins\dsh-doraemon-paper-reader
 ```
 
 改动生效方式（详见 `docs/开发流程.md` §5）：改 `src/*.js` → 重启 `dsh dev`；改 `package.json` → 重新安装；
-改浏览器半区 → 重新构建 + 刷新页面。**任何影响用户日常 `web` / `desktop` profile 的动作都要单独确认。**
+`src/client.js` 没有构建步骤，重启或刷新页面即可。**任何影响用户日常 `web` / `desktop` profile 的动作都要单独确认。**
 
 ## 测试分层
 
@@ -49,6 +53,14 @@ dsh plugin --profile dev add link:D:\DSH-Plugins\dsh-doraemon-paper-reader
 
 联网用例必须能离线跑：真实响应先落盘成 fixture（`test/fixtures/`），不要依赖"今天网络通"。
 
+PDF 审计迭代走独立回路：
+
+```powershell
+npm run audit:lab -- self-check
+npm run audit:lab -- extract .\paper.pdf --out .\audit-lab\work\paper
+npm run audit:lab -- regression --keep-going
+```
+
 ## 交付前自检
 
 1. `npm test` 红绿结论 + 未跑项（照实写）；
@@ -58,6 +70,15 @@ dsh plugin --profile dev add link:D:\DSH-Plugins\dsh-doraemon-paper-reader
 3. 回填 `docs/决定台账.md`（新决定）与 `docs/项目索引.md`（新文件/时效）；
 4. 复制了第三方代码 → 更新 `THIRD_PARTY_NOTICES.md`；
 5. 提交信息用中文，说清"改了什么、为什么"。
+
+发布候选：
+
+```powershell
+npm run package:candidate
+```
+
+生成插件 tgz 和独立 audit-lab tgz，并写 `dist/release-manifest.json` 与
+`dist/SHA256SUMS.txt`。正式发布使用 `npm run release:check`，工作树必须干净。
 
 ## 已踩过的坑（别再踩）
 

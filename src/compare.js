@@ -9,9 +9,39 @@
 // 本模块只产出提示词、校验模型输出、生成主对话消息；不读文件、不调模型。
 
 import { DIGEST_VERSION, digestToText } from './digest.js'
+import { buildQaSystemContract } from './qa-contract.js'
 
 /** 对照提示词版本；改了规则就递增，缓存随之失效。 */
-export const COMPARE_PROMPT_VERSION = 3
+export const COMPARE_PROMPT_VERSION = 6
+
+/** B9 三条核心旅程；数量限制由产品流程和协议层共同执行。 */
+export const SURVEY_MODES = Object.freeze({
+  method: Object.freeze({
+    label: '2 篇方法对照',
+    minPapers: 2,
+    maxPapers: 2,
+    goal: '判断两篇论文的任务、数据、方法和指标是否可比，并找出方法差异对实验设计的含义。',
+  }),
+  gap: Object.freeze({
+    label: '3 篇研究缺口',
+    minPapers: 3,
+    maxPapers: 3,
+    goal: '把三篇论文按研究问题与场景聚类，区分共同覆盖、明显空白和结论冲突。',
+  }),
+  report: Object.freeze({
+    label: '综述报告',
+    minPapers: 2,
+    maxPapers: 3,
+    goal: '从有证据的对照结果形成背景、路线、比较、争议、缺口和下一步报告。',
+  }),
+})
+
+const SURVEY_MODE_SET = new Set(Object.keys(SURVEY_MODES))
+const COMPARABILITY_STATUS = Object.freeze({
+  comparable: '适合对照',
+  limited: '有限可比',
+  'not-recommended': '不建议直接对照',
+})
 
 /** 综述对照表的固定字段；顺序就是界面上的行顺序。 */
 export const COMPARE_FIELDS = [
@@ -61,6 +91,209 @@ function clip(value, limit) {
   const text = clean(value)
   if (text.length <= limit) return text
   return text.slice(0, Math.max(0, limit - 1)).trimEnd() + '…'
+}
+
+const SURVEY_STOPWORDS = new Set([
+  'about',
+  'abstract',
+  'after',
+  'and',
+  'also',
+  'among',
+  'analysis',
+  'an',
+  'approach',
+  'are',
+  'as',
+  'at',
+  'based',
+  'be',
+  'between',
+  'by',
+  'could',
+  'enough',
+  'field',
+  'for',
+  'from',
+  'have',
+  'in',
+  'into',
+  'is',
+  'it',
+  'method',
+  'methods',
+  'of',
+  'on',
+  'paper',
+  'comparison',
+  'introduction',
+  'results',
+  'text',
+  'useful',
+  'long',
+  'result',
+  'results',
+  'study',
+  'than',
+  'that',
+  'their',
+  'these',
+  'the',
+  'this',
+  'through',
+  'to',
+  'using',
+  'we',
+  'with',
+  '研究',
+  '方法',
+  '结果',
+  '论文',
+  '本文',
+  '基于',
+  '一种',
+  '分析',
+])
+
+export function normalizeSurveyMode(value) {
+  const mode = String(value || 'method').toLowerCase()
+  return SURVEY_MODE_SET.has(mode) ? mode : 'method'
+}
+
+function normalizedIdentity(value) {
+  return clean(value).toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')
+}
+
+function surveyTokens(value) {
+  const text = clean(value).toLowerCase()
+  const raw = text.match(/[\p{L}\p{N}]{2,}/gu) || []
+  return new Set(
+    raw
+      .map((token) => token.replace(/^\d+$/, ''))
+      .filter((token) => token.length >= 2 && !SURVEY_STOPWORDS.has(token)),
+  )
+}
+
+function tokenOverlap(left, right) {
+  if (left.size === 0 || right.size === 0) return { score: 0, shared: [] }
+  const shared = [...left].filter((token) => right.has(token))
+  const union = new Set([...left, ...right])
+  return { score: union.size > 0 ? shared.length / union.size : 0, shared }
+}
+
+function digestTextForCompatibility(digest) {
+  return [
+    digest?.abstract || '',
+    ...(Array.isArray(digest?.sections) ? digest.sections : []).map(
+      (section) => String(section?.title || '') + ' ' + String(section?.gist || ''),
+    ),
+    ...(Array.isArray(digest?.excerpts) ? digest.excerpts : []).map((excerpt) => excerpt?.text || ''),
+  ].join(' ')
+}
+
+/**
+ * 先做确定性可比性预检，再决定是否值得调用模型。
+ * 这不是最终学术判断，而是用来防止把同篇版本或明显不同主题硬塞进七字段表。
+ */
+export function assessSurveyCompatibility(digests, surveyMode = 'method') {
+  const papers = Array.isArray(digests) ? digests : []
+  const mode = normalizeSurveyMode(surveyMode)
+  const policy = SURVEY_MODES[mode]
+  const pairScores = []
+  const duplicatePairs = []
+  for (let leftIndex = 0; leftIndex < papers.length; leftIndex += 1) {
+    const left = papers[leftIndex]
+    const leftTitle = surveyTokens(left?.title)
+    const leftBody = surveyTokens(digestTextForCompatibility(left))
+    for (let rightIndex = leftIndex + 1; rightIndex < papers.length; rightIndex += 1) {
+      const right = papers[rightIndex]
+      const rightTitle = surveyTokens(right?.title)
+      const rightBody = surveyTokens(digestTextForCompatibility(right))
+      const title = tokenOverlap(leftTitle, rightTitle)
+      const body = tokenOverlap(leftBody, rightBody)
+      const sharedTerms = [...new Set([...title.shared, ...body.shared])].slice(0, 8)
+      const sameDoi =
+        Boolean(normalizedIdentity(left?.doi)) &&
+        normalizedIdentity(left?.doi) === normalizedIdentity(right?.doi)
+      const sameArxiv =
+        Boolean(normalizedIdentity(left?.arxiv)) &&
+        normalizedIdentity(left?.arxiv) === normalizedIdentity(right?.arxiv)
+      const sameTitle =
+        Boolean(normalizedIdentity(left?.title)) &&
+        normalizedIdentity(left?.title) === normalizedIdentity(right?.title)
+      const likelyVersion = sameDoi || sameArxiv || sameTitle
+      if (likelyVersion) {
+        duplicatePairs.push({
+          jobIds: [left?.jobId || '', right?.jobId || ''],
+          reason: sameDoi ? 'same-doi' : sameArxiv ? 'same-arxiv' : 'same-title',
+        })
+      }
+      pairScores.push({
+        jobIds: [left?.jobId || '', right?.jobId || ''],
+        score: Number((title.score * 0.45 + body.score * 0.55).toFixed(4)),
+        titleScore: Number(title.score.toFixed(4)),
+        bodyScore: Number(body.score.toFixed(4)),
+        sharedTerms,
+        likelyVersion,
+      })
+    }
+  }
+  const allText = papers.map((paper) => surveyTokens(digestTextForCompatibility(paper)))
+  const sharedAcrossAll =
+    allText.length > 0
+      ? [...allText[0]].filter((token) => allText.slice(1).every((set) => set.has(token))).slice(0, 8)
+      : []
+  const averageScore =
+    pairScores.length > 0
+      ? pairScores.reduce((sum, pair) => sum + pair.score, 0) / pairScores.length
+      : 0
+  const countValid = papers.length >= policy.minPapers && papers.length <= policy.maxPapers
+  const reasons = []
+  const warnings = []
+  if (!countValid) {
+    reasons.push(
+      policy.label + ' 需要 ' + policy.minPapers + (policy.minPapers === policy.maxPapers ? '' : '–' + policy.maxPapers) + ' 篇论文。',
+    )
+  }
+  if (duplicatePairs.length > 0) {
+    reasons.push('选中的论文包含同 DOI/arXiv 或同标题条目，更像同一论文的不同版本。')
+  }
+  if (averageScore >= 0.045 || sharedAcrossAll.length >= 3) {
+    reasons.push('论文标题、摘要或章节存在可见的共同研究词汇。')
+  } else if (averageScore >= 0.015 || pairScores.some((pair) => pair.sharedTerms.length >= 2)) {
+    reasons.push('论文只有少量共同词汇，能做有限对照，但需要明确设定差异。')
+  } else {
+    reasons.push('论文之间没有检测到足够的共同研究词汇。')
+  }
+  if (!countValid || duplicatePairs.length > 0) {
+    warnings.push('当前选择不适合按七字段硬比较；可返回重新选文。')
+  } else if (averageScore < 0.015 && sharedAcrossAll.length < 3) {
+    warnings.push('可比性较低；若仍继续，报告会把跨论文关系标为模型归纳。')
+  }
+  let status = 'not-recommended'
+  if (countValid && duplicatePairs.length === 0) {
+    if (averageScore >= 0.045 || sharedAcrossAll.length >= 3) status = 'comparable'
+    else if (averageScore >= 0.015 || pairScores.some((pair) => pair.sharedTerms.length >= 2)) {
+      status = 'limited'
+    }
+  }
+  return {
+    version: COMPARE_PROMPT_VERSION,
+    mode,
+    label: policy.label,
+    goal: policy.goal,
+    paperCount: papers.length,
+    expectedCount: { min: policy.minPapers, max: policy.maxPapers },
+    status,
+    statusLabel: COMPARABILITY_STATUS[status],
+    canProceed: status !== 'not-recommended',
+    score: Number(averageScore.toFixed(4)),
+    sharedTerms: [...new Set([...sharedAcrossAll, ...pairScores.flatMap((pair) => pair.sharedTerms)])].slice(0, 10),
+    pairScores,
+    duplicatePairs,
+    reasons,
+    warnings,
+  }
 }
 
 /** 把批注压成给模型看的短行；对照表与工作台对话共用同一口径。 */
@@ -126,13 +359,53 @@ function coerceCell(value) {
   }
 }
 
+function normalizeSurveyEvidence(rawEvidence, indexes) {
+  const evidence = []
+  const seen = new Set()
+  for (const item of Array.isArray(rawEvidence) ? rawEvidence : []) {
+    const jobId = String(item?.jobId || '')
+    const index = indexes.get(jobId)
+    if (!index) continue
+    const ids = Array.isArray(item?.blockIds)
+      ? item.blockIds
+      : item?.blockId
+        ? [item.blockId]
+        : []
+    for (const blockIdValue of ids) {
+      const blockId = String(blockIdValue || '')
+      const locator = index.get(blockId)
+      if (!locator) continue
+      const key = jobId + ':' + blockId
+      if (seen.has(key)) continue
+      seen.add(key)
+      evidence.push({
+        jobId,
+        blockId,
+        page: locator.page,
+        section: locator.section,
+        quote: clip(item?.quote, 220),
+      })
+    }
+  }
+  return evidence
+}
+
+function evidenceJobIds(evidence) {
+  return [...new Set((Array.isArray(evidence) ? evidence : []).map((item) => item.jobId))]
+}
+
 /**
  * 校验并规范化综述对照表。模型必须给 blockId；给不出就标「未定位」，不伪造。
  * @param {unknown} raw - 模型 JSON。
  * @param {object[]} digests - 2–3 篇档案。
  * @returns {object} 可直接渲染的表格 + 统计 + 告警。
  */
-export function normalizeComparisonTable(raw, digests) {
+export function normalizeComparisonTable(raw, digests, options = {}) {
+  const surveyMode = normalizeSurveyMode(options.surveyMode || raw?.mode)
+  const preflight =
+    options.preflight ||
+    raw?.preflight ||
+    assessSurveyCompatibility(digests, surveyMode)
   const papers = Array.isArray(raw?.papers) ? raw.papers : []
   const byJob = new Map()
   for (const paper of papers) {
@@ -171,11 +444,230 @@ export function normalizeComparisonTable(raw, digests) {
     warnings.push(ungrounded + ' 个单元格没有有效 blockId，已标为「未定位」，不要当成已核对结论')
   }
   if (missing > 0) warnings.push(missing + ' 个单元格在给定材料里找不到依据')
+  const relations = []
+  for (const item of Array.isArray(raw?.relations) ? raw.relations : []) {
+    const evidence = normalizeSurveyEvidence(item?.evidence, indexes)
+    if (evidence.length === 0) continue
+    relations.push({
+      type: ['shared', 'difference', 'conflict', 'complement'].includes(item?.type)
+        ? item.type
+        : 'difference',
+      text: clip(item?.text, 520),
+      evidence,
+      grounded: true,
+    })
+  }
+  const gaps = []
+  let gapsGrounded = 0
+  let gapsInference = 0
+  for (const item of Array.isArray(raw?.gaps) ? raw.gaps : []) {
+    const text = clip(item?.text, 620)
+    if (!text) continue
+    const evidence = normalizeSurveyEvidence(item?.support || item?.evidence, indexes)
+    const inference = ['model-inference', 'synthesis', 'hypothesis'].includes(String(item?.kind || ''))
+    if (inference) {
+      gapsInference += 1
+      gaps.push({
+        text,
+        kind: 'model-inference',
+        evidence,
+        nextStep: clip(item?.nextStep || item?.next, 260),
+        noveltyCheck: clip(item?.noveltyCheck || 'not-run', 80),
+      })
+      continue
+    }
+    if (evidenceJobIds(evidence).length < 2) {
+      warnings.push('一个研究缺口少于两篇论文的有效证据，已从报告事实区丢弃：' + clip(text, 80))
+      continue
+    }
+    gapsGrounded += 1
+    gaps.push({
+      text,
+      kind: 'grounded',
+      evidence,
+      nextStep: clip(item?.nextStep || item?.next, 260),
+      noveltyCheck: clip(item?.noveltyCheck || 'not-run', 80),
+    })
+  }
+  const comparableCells = grounded + ungrounded
   return {
     version: COMPARE_PROMPT_VERSION,
+    surveyMode,
+    taskLabel: SURVEY_MODES[surveyMode].label,
+    goal: SURVEY_MODES[surveyMode].goal,
+    papers: digests.map((digest) => ({ jobId: digest.jobId, title: digest.title })),
+    preflight,
     fields,
-    stats: { grounded, ungrounded, missing, total: fields.length * digests.length },
+    relations,
+    gaps,
+    stats: {
+      grounded,
+      ungrounded,
+      missing,
+      total: fields.length * digests.length,
+      anchorRate: comparableCells > 0 ? Number((grounded / comparableCells).toFixed(4)) : 0,
+      relations: relations.length,
+      gapsGrounded,
+      gapsInference,
+    },
     warnings,
+  }
+}
+
+function paperAliases(table) {
+  return new Map(
+    (Array.isArray(table?.papers) ? table.papers : []).map((paper, index) => [
+      paper.jobId,
+      { alias: 'P' + (index + 1), title: paper.title || paper.jobId },
+    ]),
+  )
+}
+
+function evidenceLabel(evidence, aliases) {
+  return (Array.isArray(evidence) ? evidence : [])
+    .map((item) => {
+      const paper = aliases.get(item.jobId)
+      return paper ? paper.alias + ' ' + item.blockId : item.blockId
+    })
+    .filter(Boolean)
+    .join('、')
+}
+
+/**
+ * 从已经通过 blockId 校验的对照表生成综述报告。
+ * 报告事实段只写 grounded 内容；未定位和模型归纳进入独立区，避免把无出处内容混进结论。
+ */
+export function buildSurveyReport({ table, preflight = null, title = '' }) {
+  const aliases = paperAliases(table)
+  const lines = []
+  const task = table?.taskLabel || SURVEY_MODES[normalizeSurveyMode(table?.surveyMode)].label
+  lines.push('# ' + (title || '多篇论文综述报告'))
+  lines.push('')
+  lines.push('> 任务：' + task)
+  const effectivePreflight = preflight || table?.preflight || null
+  if (effectivePreflight) {
+    lines.push(
+      '> 可比性：' +
+        effectivePreflight.statusLabel +
+        '；共同研究词：' +
+        (effectivePreflight.sharedTerms.length ? effectivePreflight.sharedTerms.join('、') : '未检出'),
+    )
+    for (const reason of effectivePreflight.reasons || []) lines.push('> - ' + reason)
+  }
+  lines.push('')
+  lines.push('## 论文范围')
+  for (const [jobId, paper] of aliases) {
+    lines.push('- ' + paper.alias + '：' + paper.title + '（jobId=' + jobId + '）')
+  }
+  lines.push('')
+  lines.push('## 有原文证据的对照')
+  for (const field of Array.isArray(table?.fields) ? table.fields : []) {
+    const groundedCells = field.cells.filter((cell) => cell.grounded && !cell.missing)
+    if (groundedCells.length === 0) continue
+    lines.push('### ' + field.label)
+    for (const cell of groundedCells) {
+      const paper = aliases.get(cell.jobId)
+      lines.push(
+        '- ' +
+          (paper?.alias || '论文') +
+          '：' +
+          cell.text +
+          ' [' +
+          evidenceLabel(
+            cell.blockIds.map((blockId) => ({ jobId: cell.jobId, blockId })),
+            aliases,
+          ) +
+          ']',
+      )
+    }
+    lines.push('')
+  }
+  const groundedRelations = (Array.isArray(table?.relations) ? table.relations : []).filter(
+    (relation) => relation.grounded && relation.evidence.length > 0,
+  )
+  if (groundedRelations.length > 0) {
+    lines.push('## 跨论文关系（有证据）')
+    for (const relation of groundedRelations) {
+      lines.push(
+        '- ' +
+          ({
+            shared: '共同覆盖',
+            difference: '设定/方法差异',
+            conflict: '结论冲突',
+            complement: '互补关系',
+          }[relation.type] || '关系') +
+          '：' +
+          relation.text +
+          ' [' +
+          evidenceLabel(relation.evidence, aliases) +
+          ']',
+      )
+    }
+    lines.push('')
+  }
+  const groundedGaps = (Array.isArray(table?.gaps) ? table.gaps : []).filter(
+    (gap) => gap.kind === 'grounded',
+  )
+  const inferenceGaps = (Array.isArray(table?.gaps) ? table.gaps : []).filter(
+    (gap) => gap.kind === 'model-inference',
+  )
+  if (groundedGaps.length > 0) {
+    lines.push('## 可验证研究缺口')
+    for (const gap of groundedGaps) {
+      lines.push('- ' + gap.text + ' [' + evidenceLabel(gap.evidence, aliases) + ']')
+      if (gap.nextStep) lines.push('  - 下一步：' + gap.nextStep)
+      lines.push('  - 查新状态：' + (gap.noveltyCheck === 'not-run' ? '未查新' : gap.noveltyCheck))
+    }
+    lines.push('')
+  }
+  if (inferenceGaps.length > 0) {
+    lines.push('## 模型归纳（需人工验证，不作为论文事实）')
+    for (const gap of inferenceGaps) {
+      lines.push('- ' + gap.text)
+      if (gap.evidence.length > 0) lines.push('  - 相关原文：' + evidenceLabel(gap.evidence, aliases))
+      if (gap.nextStep) lines.push('  - 可验证方式：' + gap.nextStep)
+      lines.push('  - 查新状态：' + (gap.noveltyCheck === 'not-run' ? '未查新' : gap.noveltyCheck))
+    }
+    lines.push('')
+  }
+  const ungrounded = []
+  for (const field of Array.isArray(table?.fields) ? table.fields : []) {
+    for (const cell of field.cells) {
+      if (cell.grounded || cell.missing) continue
+      ungrounded.push({ field: field.label, cell })
+    }
+  }
+  lines.push('## 证据边界')
+  lines.push(
+    '- 已定位单元格：' +
+      (table?.stats?.grounded || 0) +
+      '/' +
+      (table?.stats?.total || 0) +
+      '；未定位：' +
+      (table?.stats?.ungrounded || 0) +
+      '；未找到：' +
+      (table?.stats?.missing || 0) +
+      '。',
+  )
+  lines.push('- 本报告只把有 blockId 的单元格和关系写入事实区；模型归纳已独立标注。')
+  if (ungrounded.length > 0) {
+    lines.push(
+      '- 待核对文字：' +
+        ungrounded
+          .slice(0, 12)
+          .map((item) => item.field + ' / ' + item.cell.text)
+          .join('；'),
+    )
+  }
+  return {
+    markdown: lines.join('\n').trim() + '\n',
+    stats: {
+      groundedRelations: groundedRelations.length,
+      groundedGaps: groundedGaps.length,
+      inferenceGaps: inferenceGaps.length,
+      unsourcedFacts: 0,
+      ungroundedCells: ungrounded.length,
+    },
   }
 }
 
@@ -220,26 +712,47 @@ export function normalizeCitationVerdict(raw, { digests, citingJobId }) {
 }
 
 /** 综述提示词：要求结构化对照，并明确区分「设定不同」与「真正冲突」。 */
-export function buildSurveyPrompt({ digests }) {
+export function buildSurveyPrompt({
+  digests,
+  surveyMode = 'method',
+  preflight = null,
+}) {
+  const mode = normalizeSurveyMode(surveyMode)
+  const policy = SURVEY_MODES[mode]
+  const compatibility = preflight || assessSurveyCompatibility(digests, mode)
   const system = [
     '你是论文对照分析器。只输出 JSON，不要 Markdown。',
     '你只能使用给定的论文档案；不得引入外部知识，不得编造数字、实验或结论。',
     '每个字段都必须给 blockIds，且只能从该论文的章节/关键段 blockId 里选；找不到依据就写 text="未找到"、blockIds=[]。',
     '把「研究设定不同」与「结论真正冲突」分开：样本、任务、指标不同，不等于结论矛盾。',
     '数字保留原文口径与单位；不要做单位换算，除非原文给了换算。',
+    '本次任务：' + policy.label + '。目标：' + policy.goal,
+    '无论任务类型是什么，papers[].fields 的七个字段都必须逐篇填写；研究缺口和跨论文关系不能替代基础对照表。',
+    '跨论文关系必须给至少一条有效证据；研究缺口若没有至少两篇不同论文的有效证据，kind 必须写 model-inference。',
+    '不要输出逐篇摘要拼接。优先输出跨论文的共同覆盖、差异、冲突、互补和可验证缺口。',
   ].join('\n')
   const schema = [
     '输出 JSON 形状：',
     '{"papers":[{"jobId":"...","fields":{',
     ...COMPARE_FIELDS.map((field) => '"' + field.key + '":{"text":"...","blockIds":["b0002"]}'),
-    '}}],"notes":["..."]}',
+    '}}],',
+    '"relations":[{"type":"shared|difference|conflict|complement","text":"跨论文关系","evidence":[{"jobId":"...","blockId":"b0002","quote":"原文短句"}]}],',
+    '"gaps":[{"text":"具体可验证缺口","kind":"grounded|model-inference","support":[{"jobId":"...","blockId":"b0002"}],"nextStep":"下一步实验/检索建议","noveltyCheck":"not-run"}],',
+    '"notes":["..."]}',
     '字段含义：' + COMPARE_FIELDS.map((field) => field.key + '=' + field.label + '（' + field.hint + '）').join('；'),
+    '关系类型：shared=共同覆盖，difference=设定/方法不同，conflict=真正相反，complement=互补。',
+    '缺口规则：grounded 至少需要两篇不同论文的 support；只来自单篇或模型推理时必须写 model-inference。',
   ].join('\n')
   const material = digests.map((digest, index) => digestToText(digest, 'P' + (index + 1))).join('\n\n')
   return {
     system,
-    user: schema + '\n\n论文档案：\n\n' + material,
-    maxTokens: 3200,
+    user:
+      schema +
+      '\n\n确定性可比性预检：\n' +
+      JSON.stringify(compatibility, null, 2) +
+      '\n\n论文档案：\n\n' +
+      material,
+    maxTokens: 4200,
   }
 }
 
@@ -296,13 +809,14 @@ export function buildCitationPrompt({ digests, citing }) {
 }
 
 /** 缓存键：论文集合 + 模式 + 引用位置 + 两个版本号。 */
-export function compareKey({ jobIds, mode = 'survey', citing = null }) {
+export function compareKey({ jobIds, mode = 'survey', citing = null, surveyMode = '' }) {
   const ids = [...new Set((jobIds || []).map(String))].sort()
   const cite = citing ? String(citing.jobId || '') + ':' + String(citing.blockId || '') : ''
   return [
     'digest=' + DIGEST_VERSION,
     'prompt=' + COMPARE_PROMPT_VERSION,
     'mode=' + mode,
+    'survey=' + (mode === 'survey' ? normalizeSurveyMode(surveyMode) : ''),
     'papers=' + ids.join(','),
     'citing=' + cite,
   ].join('|')
@@ -415,6 +929,8 @@ export function buildCompareMessage({
   question = '',
   table = null,
   annotations = [],
+  surveyMode = 'method',
+  preflight = null,
 }) {
   const lines = []
   const ids = digests.map((digest) => digest.jobId)
@@ -425,7 +941,7 @@ export function buildCompareMessage({
     )
     if (citing.text) lines.push('原文：「' + clip(citing.text, 260) + '」')
   } else {
-    lines.push('🧭 多篇对照 · 综述模式 · ' + digests.length + ' 篇')
+    lines.push('🧭 多篇对照 · ' + SURVEY_MODES[normalizeSurveyMode(surveyMode)].label + ' · ' + digests.length + ' 篇')
   }
   digests.forEach((digest, index) => {
     const role =
@@ -454,6 +970,19 @@ export function buildCompareMessage({
         ' 个单元格有 blockId；未定位的单元格不要当成结论。',
     )
   }
+  if (mode === 'survey' && preflight) {
+    lines.push(
+      '',
+      '可比性预检：' +
+        preflight.statusLabel +
+        '（分数 ' +
+        preflight.score +
+        '）；共同词：' +
+        (preflight.sharedTerms.length ? preflight.sharedTerms.join('、') : '未检出') +
+        '。',
+    )
+    if (preflight.warnings.length > 0) lines.push('预检提醒：' + preflight.warnings.join('；'))
+  }
   lines.push(
     '',
     '请先调用 doraemon_read_papers，jobIds 用：' + JSON.stringify(ids) + '。',
@@ -468,10 +997,12 @@ export function buildCompareMessage({
         ].join('\n')
       : [
           '回答规则：',
-          '1. 先给对照表：研究问题 / 对象与数据 / 方法 / 指标 / 主要结果 / 局限 / 与整体问题的关系。',
-          '2. 每个结论后面标 `[P1 b0002]` 这样的论文编号 + blockId；没有依据写「未找到」，不要猜。',
-          '3. 把「研究设定不同」与「结论真正冲突」分开说。',
-          '4. 最后给一句：下一步该读哪一篇的哪一节。',
+          '1. 先说明论文为什么可比或只能有限可比，再回答问题。',
+          '2. 先给跨论文关系，再给逐字段对照：研究问题 / 对象与数据 / 方法 / 指标 / 主要结果 / 局限 / 与整体问题的关系。',
+          '3. 每个结论后面标 `[P1 b0002]` 这样的论文编号 + blockId；没有依据写「未找到」，不要猜。',
+          '4. 把「研究设定不同」与「结论真正冲突」分开说。',
+          '5. 研究缺口必须有至少两篇论文的证据；否则明确标为「模型归纳」。',
+          '6. 最后给一句：下一步该读哪一篇的哪一节。',
         ].join('\n'),
     '引用原文时优先用 dsh-resource://doraemon-paper/<jobId>/<blockId> 链接；不要改写成文件路径。',
   )
@@ -491,15 +1022,25 @@ export function buildCompareChatPrompt({
   annotations = [],
   question = '',
   history = [],
+  surveyMode = 'method',
+  preflight = null,
 }) {
   const system = [
     '你是大肥鱼论文对照工作台。只使用给定的论文档案与批注，不得引入外部知识，不得编造数字、实验或结论。',
     '输出中文 Markdown，先给结论，再给证据；每个结论后标 `[P1 b0002]` 这样的论文编号 + blockId。',
     '找不到依据就写「未找到」，不要用常识补齐。',
     '把「研究设定不同」与「结论真正冲突」分开：样本、任务、指标不同，不等于结论矛盾。',
+    buildQaSystemContract({
+      question,
+      annotations,
+      evidenceMode: 'paper-only',
+    }),
     mode === 'citation'
       ? '这是引用对照：A 是引用方，B 是被引论文；关于 B 的结论只能引用 B 的 blockId，A 的内容不能当作 B 的证据。'
-      : '这是多篇综述：优先给跨论文的共同点、差异、证据强弱和下一步该读哪一节。',
+      : '这是' +
+        SURVEY_MODES[normalizeSurveyMode(surveyMode)].label +
+        '：优先给跨论文的共同点、差异、证据强弱和下一步该读哪一节。' +
+        '研究缺口必须有至少两篇论文的 blockId 证据；没有时明确标为「模型归纳」。',
     '用户要求表格、数据图或逻辑图时，先用文字列出结构和字段；界面会另开浮窗渲染，不要把不存在的数字画进图里。',
   ].join('\n')
   const material = digests.map((digest, index) => digestToText(digest, 'P' + (index + 1))).join('\n\n')
@@ -523,6 +1064,17 @@ export function buildCompareChatPrompt({
   lines.push('论文档案：', material)
   if (noteLines.length > 0) {
     lines.push('', '随本次提问附带的跨论文批注：', ...noteLines)
+  }
+  if (mode === 'survey' && preflight) {
+    lines.push(
+      '',
+      '可比性预检：' +
+        preflight.statusLabel +
+        '；共同词：' +
+        (preflight.sharedTerms.length ? preflight.sharedTerms.join('、') : '未检出') +
+        '；提醒：' +
+        (preflight.warnings.length ? preflight.warnings.join('；') : '无'),
+    )
   }
   if (historyLines.length > 0) {
     lines.push('', '最近对话：', ...historyLines)

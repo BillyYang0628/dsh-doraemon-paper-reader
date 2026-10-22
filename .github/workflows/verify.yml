@@ -1,0 +1,46 @@
+name: Verify and package
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Offline verification
+        run: npm run verify:offline
+
+  package:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Build release candidates
+        run: npm run package:release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dsh-doraemon-paper-reader-release-candidates
+          path: |
+            dist/*.tgz
+            dist/RELEASE_NOTES-*.md
+            dist/release-manifest.json
+            dist/SHA256SUMS.txt
+          if-no-files-found: error

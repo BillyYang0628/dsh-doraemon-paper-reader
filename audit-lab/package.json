@@ -1,0 +1,18 @@
+{
+  "name": "dsh-doraemon-paper-reader-audit-lab",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Standalone deterministic PDF structure audit lab for dsh-doraemon-paper-reader",
+  "license": "MIT",
+  "scripts": {
+    "self-check": "node cli.mjs self-check",
+    "extract": "node cli.mjs extract",
+    "audit": "node cli.mjs audit",
+    "regression": "node cli.mjs regression",
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24"
+  }
+}

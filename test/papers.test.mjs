@@ -26,6 +26,26 @@ test('API 路由：状态、文件、资产与非法路径', () => {
   assert.deepEqual(routeRequest('/doraemon-paper-reader/api/import'), { type: 'import' })
   assert.deepEqual(routeRequest('/doraemon-paper-reader/api/open'), { type: 'citation-open' })
   assert.deepEqual(routeRequest('/doraemon-paper-reader/api/library'), { type: 'library' })
+  assert.deepEqual(routeRequest('/doraemon-paper-reader/api/knowledge'), { type: 'knowledge' })
+  assert.deepEqual(routeRequest('/doraemon-paper-reader/api/knowledge/search'), {
+    type: 'knowledge-search',
+  })
+  assert.deepEqual(routeRequest('/doraemon-paper-reader/api/knowledge/rebuild'), {
+    type: 'knowledge-rebuild',
+  })
+  assert.deepEqual(routeRequest('/doraemon-paper-reader/api/knowledge/profile'), {
+    type: 'knowledge-profile',
+  })
+  assert.deepEqual(routeRequest('/doraemon-paper-reader/api/knowledge/progress'), {
+    type: 'knowledge-progress',
+  })
+  assert.deepEqual(routeRequest('/doraemon-paper-reader/api/knowledge/qa'), {
+    type: 'knowledge-qa',
+  })
+  assert.deepEqual(routeRequest('/doraemon-paper-reader/api/library/import'), { type: 'library-import' })
+  assert.deepEqual(routeRequest('/doraemon-paper-reader/api/library/convert'), { type: 'library-convert' })
+  assert.deepEqual(routeRequest('/doraemon-paper-reader/api/library/trash'), { type: 'library-trash' })
+  assert.deepEqual(routeRequest('/doraemon-paper-reader/api/library/restore'), { type: 'library-restore' })
   assert.deepEqual(routeRequest('/doraemon-paper-reader/api/maintenance'), { type: 'maintenance' })
   assert.deepEqual(routeRequest('/doraemon-paper-reader/api/maintenance/python'), {
     type: 'maintenance-python',
@@ -39,6 +59,18 @@ test('API 路由：状态、文件、资产与非法路径', () => {
   })
   assert.deepEqual(routeRequest('/doraemon-paper-reader/api/jobs/abcdefgh'), {
     type: 'status',
+    jobId: 'abcdefgh',
+  })
+  assert.deepEqual(routeRequest('/doraemon-paper-reader/api/jobs/abcdefgh/convert'), {
+    type: 'job-convert',
+    jobId: 'abcdefgh',
+  })
+  assert.deepEqual(routeRequest('/doraemon-paper-reader/api/jobs/abcdefgh/citation-graph'), {
+    type: 'citation-graph',
+    jobId: 'abcdefgh',
+  })
+  assert.deepEqual(routeRequest('/doraemon-paper-reader/api/jobs/abcdefgh/export'), {
+    type: 'job-export',
     jobId: 'abcdefgh',
   })
   assert.deepEqual(routeRequest('/doraemon-paper-reader/api/jobs/abcdefgh/citations'), {
@@ -82,6 +114,9 @@ test('API 路由：状态、文件、资产与非法路径', () => {
   assert.deepEqual(routeRequest('/doraemon-paper-reader/api/citations/analyze'), { type: 'citation-analyze' })
   assert.deepEqual(routeRequest('/doraemon-paper-reader/api/citations/promote'), { type: 'citation-promote' })
   assert.deepEqual(routeRequest('/doraemon-paper-reader/api/compare/concept'), { type: 'compare-concept' })
+  assert.deepEqual(routeRequest('/doraemon-paper-reader/api/compare/survey-report'), {
+    type: 'compare-survey-report',
+  })
   assert.deepEqual(routeRequest('/doraemon-paper-reader/api/jobs/abcdefgh/mirrordoc.json'), {
     type: 'file',
     jobId: 'abcdefgh',

@@ -71,6 +71,9 @@ test('批注摘要：只出现批注 1/2、页码和短批次号，不出现整�
   assert.match(message, /p\.7/)
   assert.match(message, /doraemon_read_annotations/)
   assert.match(message, /batch_0123456789abcdef01234567/)
+  assert.match(message, /回答契约 B6/)
+  assert.match(message, /第一段直接回答/)
+  assert.match(message, /默认精读/)
   assert.doesNotMatch(message, /"segments"/)
   assert.doesNotMatch(message, /"quote"/)
   assert.doesNotMatch(message, /track and monitor cargo conditions/)
@@ -92,6 +95,29 @@ test('跨论文批注：同一次发送里标明两篇论文，并要求先分�
   assert.equal(meta.paper, '2 篇论文')
   assert.equal(meta.papers.length, 2)
   assert.match(meta.lines[1], /A second paper on plague/)
+})
+
+test('批注回答策略：只根据原文会持久化并覆盖默认精读', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'dpr-annotations-'))
+  try {
+    const store = createAnnotationBatchStore({ dataRoot: root })
+    const packet = samplePacket()
+    packet.answerPolicy = {
+      evidenceMode: 'paper-only',
+      mode: 'research',
+      researchDirection: '轻量视觉模型与边缘部署',
+    }
+    const saved = await store.save(packet)
+    assert.match(saved.message, /只根据原文/)
+    assert.match(saved.message, /研究模式/)
+    assert.match(saved.message, /轻量视觉模型与边缘部署/)
+    const record = await store.read(saved.batchId)
+    assert.equal(record.packet.answerPolicy.evidenceMode, 'paper-only')
+    assert.equal(record.packet.answerPolicy.mode, 'research')
+    assert.equal(record.packet.answerPolicy.version, 1)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })
 
 test('批注包校验：拒绝空批注、空片段与超量批注', () => {
@@ -180,6 +206,10 @@ test('读取工具：模型拿到完整包，卡片只拿摘要', async () => {
     const value = await tool.execute({ batchId: saved.batchId })
     assert.equal(value.batchId, saved.batchId)
     assert.equal(value.annotations[0].segments[0].quote, 'track and monitor cargo conditions.')
+    assert.match(value.qaContract, /回答契约 B6/)
+    assert.ok(value.answerPolicy.intent)
+    assert.ok(tool.description)
+    assert.match(tool.description, /B6 契约/)
 
     const rendered = tool.output.render({ batchId: saved.batchId }, value)
     assert.equal(rendered[0].type, 'text')

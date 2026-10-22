@@ -196,6 +196,79 @@ test('引用解析路由：无合法全文时诚实降级为 metadata-only', asy
   }
 })
 
+test('引用解析：非标识符路径保留作者/年份/venue，并返回可解释主候选', async () => {
+  const fetchImpl = async (url) => {
+    const text = String(url)
+    if (text.startsWith('https://api.openalex.org/works?')) {
+      return {
+        ok: true,
+        text: async () =>
+          JSON.stringify({
+            results: [
+              {
+                title: 'Deep Learning for Image Data',
+                doi: 'https://doi.org/10.1000/noise',
+                publication_year: 2020,
+                authorships: [{ author: { display_name: 'Noise Author' } }],
+                primary_location: { source: { display_name: 'Image Journal' } },
+              },
+            ],
+          }),
+      }
+    }
+    if (text.startsWith('https://api.crossref.org/works?')) {
+      return {
+        ok: true,
+        text: async () =>
+          JSON.stringify({
+            message: {
+              items: [
+                {
+                  DOI: '10.1000/correct',
+                  title: ['Deep Learning for Tabular Data: A Survey'],
+                  author: [{ given: 'Alice', family: 'Smith' }],
+                  published: { 'date-parts': [[2023]] },
+                  'container-title': ['ACM Computing Surveys'],
+                  abstract: 'A survey of tabular learning.',
+                  type: 'journal-article',
+                },
+              ],
+            },
+          }),
+      }
+    }
+    return {
+      ok: true,
+      text: async () =>
+        '<feed xmlns="http://www.w3.org/2005/Atom"></feed>',
+    }
+  }
+  const { root, api } = await fixture(async () => ({}), fetchImpl)
+  try {
+    const result = await call(
+      api.handler,
+      'POST',
+      '/doraemon-paper-reader/api/citations/resolve',
+      {
+        referenceText:
+          '1. Alice Smith (2023) Deep Learning for Tabular Data: A Survey. ACM Computing Surveys 55, 1-30.',
+        number: 1,
+        citing: { quote: 'Tabular retrieval has advanced [1].' },
+      },
+    )
+    assert.equal(result.status, 200, JSON.stringify(result.body))
+    assert.equal(result.body.kind, 'candidates')
+    assert.equal(result.body.candidates[0].doi, '10.1000/correct')
+    assert.equal(result.body.candidates[0].isPrimary, true)
+    assert.equal(result.body.candidates[0].confidence, 'high')
+    assert.match(result.body.candidates[0].reasons.join('；'), /标题|作者|年份|刊物/)
+    assert.ok(result.body.retrieval.routes.length >= 3)
+  } finally {
+    api.dispose()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('引用解析：缺失参考文献原文返回业务 invalid，而不是裸 HTTP 400', async () => {
   const { root, api } = await fixture(async () => ({}))
   try {
@@ -217,6 +290,16 @@ test('引用解析：缺失参考文献原文返回业务 invalid，而不是裸
     )
     assert.equal(analyze.status, 200)
     assert.equal(analyze.body.kind, 'invalid')
+
+    const malformed = await call(
+      api.handler,
+      'POST',
+      '/doraemon-paper-reader/api/citations/resolve',
+      [],
+    )
+    assert.equal(malformed.status, 200)
+    assert.equal(malformed.body.kind, 'invalid')
+    assert.equal(malformed.body.reason, 'invalid-payload')
   } finally {
     api.dispose()
     await rm(root, { recursive: true, force: true })

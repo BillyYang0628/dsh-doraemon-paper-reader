@@ -11,6 +11,13 @@ import { randomBytes } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
+import {
+  buildAnnotationContract,
+  buildAnnotationToolPolicy,
+  buildAnswerPolicy,
+  normalizeAnswerPolicy,
+} from './qa-contract.js'
+
 /** 批注 API 的单批上限；正常论文批注远小于这个值。 */
 export const MAX_ANNOTATION_BYTES = 512 * 1024
 /** 批次号只允许我们生成的形状，防止把用户输入拼进文件路径。 */
@@ -123,6 +130,7 @@ export function assertAnnotationPacket(packet) {
       }
     }
   }
+  packet.answerPolicy = normalizeAnswerPolicy(packet.answerPolicy)
   return packet
 }
 
@@ -184,11 +192,13 @@ export function buildAnnotationMessage(packet, batchId) {
   }
   const shared = excerpt(packet.question, 200)
   if (shared) lines.push('', '整体问题：' + shared)
+  lines.push('', buildAnnotationContract(packet, { compact: true }))
   const rules = [
     '请先调用 doraemon_read_annotations 读取该批次的完整原文、前后文与各条问题，再作答；涉及原文时保留页码与段落定位。',
     ...(multiPaper
       ? ['这是跨论文批次：先按论文分别理解，再回答整体问题；引用原文时标明论文名与 blockId，不要把一篇的结论安到另一篇上。']
       : []),
+    '工具返回的 qaContract / answerPolicy 是本次回答的具体策略；若与通用习惯冲突，以它们为准。',
     '回答里若要引用原文，请直接复制上面的「回跳」Markdown 链接，或在工具结果中使用 segments[].citationDeepLink；不要改写成文件路径。回答末尾至少附一条对应原段的回跳链接。',
   ]
   lines.push('', '批次：' + batchId, ...rules)
@@ -320,7 +330,8 @@ export function createReadAnnotationsTool({ store }) {
   return {
     name: 'doraemon_read_annotations',
     description:
-      '读取大肥鱼论文阅读器暂存的批注批次。用户消息里出现“批次：`batch_...`”时，先调用本工具取得完整原文、前后文、页码、章节、图表公式与每条批注问题，再作答。若 annotations[].segments[] 带 assetPath（Figure/Table/Equation 的裁剪图），需要看图时对 assetPath 调用 read_image。回答里引用原文时，优先使用 segments[].citationUrl（HTTP 回跳页）作为 Markdown 链接地址；没有 citationUrl 时再用 citationDeepLink。不要改写成文件路径。',
+      '读取大肥鱼论文阅读器暂存的批注批次。用户消息里出现“批次：`batch_...`”时，先调用本工具取得完整原文、前后文、页码、章节、图表公式与每条批注问题，再作答。若 annotations[].segments[] 带 assetPath（Figure/Table/Equation 的裁剪图），需要看图时对 assetPath 调用 read_image。回答里引用原文时，优先使用 segments[].citationUrl（HTTP 回跳页）作为 Markdown 链接地址；没有 citationUrl 时再用 citationDeepLink。不要改写成文件路径。\n' +
+      buildAnnotationToolPolicy(),
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -345,6 +356,8 @@ export function createReadAnnotationsTool({ store }) {
         ...record.packet,
         batchId: record.batchId,
         createdAt: record.createdAt,
+        answerPolicy: buildAnswerPolicy(record.packet),
+        qaContract: buildAnnotationContract(record.packet),
       }
     },
     presentCall: (args) => ({

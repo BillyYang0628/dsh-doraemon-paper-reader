@@ -210,6 +210,56 @@ def run_case(case: Dict[str, Any], pdf: Path, out_root: Path) -> Dict[str, Any]:
             if "Strain" not in text or "\n" not in text:
                 errors.append("rotated table text missing for " + str(block.get("id")))
 
+    for wanted in expect.get("tableStructures") or []:
+        label = str(wanted.get("label") or "")
+        table = next(
+            (
+                block
+                for block in blocks
+                if block.get("type") == "table"
+                and str(block.get("label") or "").lower() == label.lower()
+            ),
+            None,
+        )
+        if table is None:
+            errors.append("table structure missing: " + label)
+            continue
+        structure = table.get("tableStructure") or {}
+        row_count = int(structure.get("rowCount") or 0)
+        column_count = int(structure.get("columnCount") or 0)
+        if "rowCount" in wanted and row_count != int(wanted["rowCount"]):
+            errors.append(f"table {label} rows {row_count} != {wanted['rowCount']}")
+        if "columnCount" in wanted and column_count != int(wanted["columnCount"]):
+            errors.append(
+                f"table {label} columns {column_count} != {wanted['columnCount']}"
+            )
+        cells = [
+            re.sub(r"\s+", "", str(cell or ""))
+            for row in structure.get("rows") or []
+            for cell in row.get("cells") or []
+        ]
+        for needle in wanted.get("requiredCells") or []:
+            normalized_needle = re.sub(r"\s+", "", str(needle))
+            if normalized_needle not in cells:
+                errors.append(
+                    f"table {label} missing cell: " + str(needle)
+                )
+        for merged in wanted.get("requiredRowSpans") or []:
+            text = re.sub(r"\s+", "", str(merged.get("text") or ""))
+            minimum = int(merged.get("minSpan") or 2)
+            found_span = 0
+            for row in structure.get("rows") or []:
+                cells = row.get("cells") or []
+                spans = row.get("rowSpan") or []
+                if cells and re.sub(r"\s+", "", str(cells[0] or "")) == text:
+                    found_span = int(spans[0] if spans else 1)
+                    break
+            if found_span < minimum:
+                errors.append(
+                    f"table {label} rowSpan for {merged['text']} "
+                    f"{found_span} < {minimum}"
+                )
+
     headings = [str(block.get("text") or "") for block in blocks if block.get("type") == "heading"]
     for order_group in expect.get("order") or []:
         positions = []

@@ -271,6 +271,13 @@ test('阅读页分隔线：内容边界与算法内部规则分别渲染', async
   assert.match(source, /block\.visualRules \|\| \[\]/)
 })
 
+test('阅读页表格：显示恢复行列数并标记续表承接页', async () => {
+  const source = await readFile(CLIENT_FILE, 'utf8')
+  assert.match(source, /\.dpr-tableStructureMeta\{/)
+  assert.match(source, /block\.type === 'table' && block\.tableStructure/)
+  assert.match(source, /续表，承接 p\./)
+})
+
 test('阅读页增强：公式/表格按钮、回跳 BroadcastChannel 与整篇复核入口已接线', async () => {
   const source = await readFile(CLIENT_FILE, 'utf8')
   assert.match(source, /startVisualJob\('formulas'\)/)
@@ -298,7 +305,7 @@ test('UI 样张落地：主界面/PDF/阅读/对照使用新页级结构', async
     /\.dpr-loadHero\{[\s\S]*grid-template-columns:minmax\(0,1fr\)[\s\S]*gap:16px/,
   )
   assert.match(source, /\.dpr-loadHero \.dpr-mascotSlot img\{max-width:216px\}/)
-  assert.match(source, /\.dpr-readerLayout\{[\s\S]*grid-template-columns:clamp\(176px,16vw,244px\)/)
+  assert.match(source, /\.dpr-readerLayout\{[\s\S]*grid-template-columns:clamp\(220px,18vw,286px\)/)
   assert.match(source, /\.dpr-readerLayout\{[\s\S]*max-width:1470px/)
   assert.match(source, /\.dpr-readerBody\{width:100%;max-width:none;/)
   assert.match(source, /\.dpr-readerOutline\{[\s\S]*top:var\(--dpr-outline-top,12px\)/)
@@ -314,8 +321,8 @@ test('UI 样张落地：主界面/PDF/阅读/对照使用新页级结构', async
   )
 })
 
-test('页签类型：五个 kind，id 唯一，都是「按 kind 打开」的页类型', () => {
-  assert.equal(captured.tabs.length, 5)
+test('页签类型：七个 kind，id 唯一，都是「按 kind 打开」的页类型', () => {
+  assert.equal(captured.tabs.length, 7)
   const kinds = captured.tabs.map((tab) => tab.kind)
   assert.deepEqual(kinds, [
     T.HOME_KIND,
@@ -323,10 +330,12 @@ test('页签类型：五个 kind，id 唯一，都是「按 kind 打开」的页
     'doraemon-paper-lookup',
     T.READER_KIND,
     T.SURVEY_KIND,
+    T.LIBRARY_KIND,
+    T.KNOWLEDGE_KIND,
   ])
   for (const kind of kinds) assert.ok(kind.startsWith('doraemon-paper'), `kind 必须带前缀：${kind}`)
   const ids = captured.tabs.map((tab) => tab.id)
-  assert.equal(new Set(ids).size, 5, 'id 全系统唯一')
+  assert.equal(new Set(ids).size, 7, 'id 全系统唯一')
   for (const id of ids) assert.ok(id.startsWith('dsh-doraemon-paper-reader'), `id 必须带包名前缀：${id}`)
   for (const tab of captured.tabs) {
     if (tab.kind === T.READER_KIND) {
@@ -362,7 +371,7 @@ test('引导页入口：只贡献一个胶囊，且标题/描述两种语言都�
   assert.ok(tEn(entry.description()).length > 0)
 })
 
-test('正文登记：五个页签 + 全宽对照 overlay，键等于类型 id，声明 locale', () => {
+test('正文登记：七个页签 + 全宽对照 overlay，键等于类型 id，声明 locale', () => {
   assert.deepEqual(
     [...new Set(captured.slotOwners)].sort(),
     ['conversation.input.dock', 'shell.overlay', 'sidebar.right.pane.tab'],
@@ -370,7 +379,7 @@ test('正文登记：五个页签 + 全宽对照 overlay，键等于类型 id，
   const sidebarSlots = captured.slots.filter((slot) => slot.options.name === 'sidebar.right.pane.tab')
   const dockSlots = captured.slots.filter((slot) => slot.options.name === 'conversation.input.dock')
   const overlaySlots = captured.slots.filter((slot) => slot.options.name === 'shell.overlay')
-  assert.equal(sidebarSlots.length, 5)
+  assert.equal(sidebarSlots.length, 7)
   assert.equal(dockSlots.length, 1)
   assert.equal(overlaySlots.length, 1)
   assert.equal(dockSlots[0].options.id, 'doraemon-annotations')
@@ -520,10 +529,15 @@ test('入口图标：像素稿按整数倍放大、坐标落在网格内、颜�
 test('对照 store：打开时换 runId、mode/jobIds 收敛，关闭只收起视图', () => {
   const store = T.createComparisonStore()
   const first = store.getSnapshot()
-  store.open({ mode: 'survey', jobIds: ['job-aaaaaaaa', 'job-bbbbbbbb', 'job-aaaaaaaa'] })
+  store.open({
+    mode: 'survey',
+    surveyMode: 'gap',
+    jobIds: ['job-aaaaaaaa', 'job-bbbbbbbb', 'job-aaaaaaaa'],
+  })
   const opened = store.getSnapshot()
   assert.equal(opened.open, true)
   assert.equal(opened.mode, 'survey')
+  assert.equal(opened.surveyMode, 'gap')
   assert.deepEqual(opened.jobIds, ['job-aaaaaaaa', 'job-bbbbbbbb'])
   assert.ok(opened.runId > first.runId)
   store.patch({ table: { fields: [] } })
@@ -556,8 +570,83 @@ test('综述选择页：空库时给出可读空态，不伪造论文行', () =>
     (element) => element.type === 'img' && element.props.src === T.MASCOT_ASSETS.stackBooks,
   )
   assert.equal(emptyArt.length, 1, '空论文库使用托书插画，有列表时不堆叠吉祥物')
+  const modes = findAll(
+    tree,
+    (element) =>
+      element.type === 'button' &&
+      String(element.props.className).split(/\s+/).includes('dpr-surveyMode'),
+  )
+  assert.equal(modes.length, 3)
+  assert.match(collectText(tree).join(' '), /2 篇方法对照/)
+  assert.match(collectText(tree).join(' '), /3 篇研究缺口/)
+  assert.match(collectText(tree).join(' '), /综述报告/)
   const start = findAll(tree, (element) => element.props.className === 'dpr-primary')[0]
   assert.equal(start.props.disabled, true, '少于两篇时开始按钮不可用')
+})
+
+test('B8 文档管理：多文件导入、筛选、批量操作与回收站入口已接线', async () => {
+  const source = await readFile(CLIENT_FILE, 'utf8')
+  const slot = captured.slots.find((entry) => entry.options.key === T.LIBRARY_ID)
+  assert.ok(slot)
+  const tree = slot.component(makeProps().props)
+  assert.match(tree.props.className, /dpr-docPane/)
+  const fileInputs = findAll(
+    tree,
+    (element) => element.type === 'input' && element.props.type === 'file',
+  )
+  assert.equal(fileInputs.length, 1)
+  assert.equal(fileInputs[0].props.multiple, true)
+  const drops = findAll(
+    tree,
+    (element) => String(element.props.className).includes('dpr-docDrop'),
+  )
+  assert.equal(drops.length, 1)
+  assert.match(String(drops[0].props.className), /dpr-drop/)
+  const text = collectText(tree).join(' ')
+  assert.match(text, /批量拖入 PDF/)
+  assert.match(text, /文档库还是空的/)
+  assert.match(source, /apiUrl\('library\?view=manage'\)/)
+  assert.match(source, /apiUrl\('library\/import'\)/)
+  assert.match(source, /apiUrl\('library\/convert'\)/)
+  assert.match(source, /apiUrl\('library\/trash'\)/)
+  assert.match(source, /apiUrl\('library\/restore'\)/)
+  assert.match(source, /\.dpr-docBulk\{[\s\S]*position:sticky/)
+  assert.match(source, /@media \(max-width:460px\)\{[\s\S]*\.dpr-docRow/)
+})
+
+test('B9 综述工作流：任务模式、可比性预检、研究缺口与证据报告已接线', async () => {
+  const source = await readFile(CLIENT_FILE, 'utf8')
+  assert.match(source, /surveyModeOptions/)
+  assert.match(source, /2 篇方法对照/)
+  assert.match(source, /3 篇研究缺口/)
+  assert.match(source, /综述报告/)
+  assert.match(source, /dpr-cmpSurveyBrief/)
+  assert.match(source, /仍然尝试对照/)
+  assert.match(source, /apiUrl\('compare\/survey-report'\)|postApi\('compare\/survey-report'/)
+  assert.match(source, /kind === 'gaps'/)
+  assert.match(source, /模型归纳（需人工验证）/)
+  assert.match(source, /surveyMode: state\.surveyMode/)
+})
+
+test('P3 知识中心：跨论文检索、引用图谱、导出和阅读档案已接线', async () => {
+  const source = await readFile(CLIENT_FILE, 'utf8')
+  const slot = captured.slots.find((entry) => entry.options.key === T.KNOWLEDGE_ID)
+  assert.ok(slot, '知识中心必须注册正文')
+  const tree = slot.component(makeProps().props)
+  assert.match(tree.props.className, /dpr-knowledgePane/)
+  const text = collectText(tree).join(' ')
+  assert.match(text, /跨论文知识检索/)
+  assert.match(text, /引用图谱/)
+  assert.match(text, /批注 Markdown/)
+  assert.match(text, /阅读档案/)
+  assert.match(source, /apiUrl\('knowledge'\)/)
+  assert.match(source, /postApi\('knowledge\/search'/)
+  assert.match(source, /postApi\('knowledge\/answer'/)
+  assert.match(source, /postApi\('knowledge\/rebuild'/)
+  assert.match(source, /apiUrl\('knowledge\/progress'\)/)
+  assert.match(source, /citation-graph/)
+  assert.match(source, /\/export\?kind=/)
+  assert.match(source, /function groupKnowledgeResultsClient/)
 })
 
 test('对照 overlay：关闭时不渲染；打开时是全宽对话框并显示加载态', () => {
@@ -701,6 +790,10 @@ test('对照对话缓存键：论文顺序无关，模式与引用位置会换�
     one,
     T.compareChatKey(['job-aaaaaaaa', 'job-bbbbbbbb'], 'citation', { blockId: 'a101' }),
   )
+  assert.notEqual(
+    one,
+    T.compareChatKey(['job-aaaaaaaa', 'job-bbbbbbbb'], 'survey', null, 'gap'),
+  )
 })
 
 test('对照表导出：Markdown 表头、blockId 与管道转义', () => {
@@ -736,6 +829,7 @@ test('对照表人工修订：叠加到单元格但不改原表', () => {
   const edited = T.applyTableEdits(table, { 'question|a': '人工修订 A' })
   assert.equal(edited.fields[0].cells[0].text, '人工修订 A')
   assert.equal(edited.fields[0].cells[0].edited, true)
+  assert.equal(edited.fields[0].cells[0].grounded, false, '人工修订不能冒充原文证据')
   assert.equal(edited.fields[0].cells[1].text, '原文 B')
   assert.equal(table.fields[0].cells[0].text, '原文 A', '原表不能被就地改掉')
 })
@@ -856,6 +950,41 @@ test('路径页：PDF 入口可选取/拖入，查询页仍是空态 + 三条打
     back.props.onClick()
     assert.deepEqual(opened, [{ kind: T.HOME_KIND, options: { replaceTab: true } }])
   }
+})
+
+test('候选检索：主候选、匹配分、置信度与并列提示均已接线', async () => {
+  const source = await readFile(CLIENT_FILE, 'utf8')
+  assert.match(source, /\.dpr-candidate\.is-primary\{/)
+  assert.match(source, /\.dpr-candidateReasons\{/)
+  assert.match(source, /candidate\.isPrimary \? '最可能原文引用'/)
+  assert.match(source, /candidate\.confidenceLabel \|\| '低'/)
+  assert.match(source, /前两项匹配分接近，请核对后再选/)
+})
+
+test('B6 批注回答：证据范围切换、持久化与 answerPolicy 已接线', async () => {
+  const source = await readFile(CLIENT_FILE, 'utf8')
+  assert.match(source, /ANSWER_POLICY_STORAGE_KEY = 'doraemonPaperReader\.answerPolicy'/)
+  assert.match(source, /className: 'dpr-answerPolicy'/)
+  assert.match(source, /'默认精读'/)
+  assert.match(source, /'只根据原文'/)
+  assert.match(source, /answerPolicy:\s*\{[\s\S]*evidenceMode: evidenceModeRef\.current/)
+  assert.match(source, /无联网时会明确“未做外部核验”/)
+})
+
+test('B7 语义目录与模式：分组目录、滚动高亮、研究方向和灵感查新入口已接线', async () => {
+  const source = await readFile(CLIENT_FILE, 'utf8')
+  assert.match(source, /semantic-outline/)
+  assert.match(source, /dpr-readerOutlineGroupLabel/)
+  assert.match(source, /setActiveOutlineId\(current\)/)
+  assert.match(source, /READER_MODE_STORAGE_PREFIX/)
+  assert.match(source, /RESEARCH_DIRECTION_STORAGE_KEY/)
+  assert.match(source, /'研究模式'/)
+  assert.match(source, /'灵感模式'/)
+  assert.match(source, /answerMode: readerMode/)
+  assert.match(source, /packetMode === 'research'/)
+  assert.match(source, /className: 'dpr-outlineRetry'/)
+  assert.match(source, /研究模式会怎样回答/)
+  assert.match(source, /未填写不会启用/)
 })
 
 test('PDF 入口的纯函数：类型、大小、计时与阶段', () => {
@@ -979,6 +1108,7 @@ test('B1 拖放边界与原版页查看器已接线', async () => {
   assert.match(source, /window\.addEventListener\('drop', onDrop, true\)/)
   assert.match(source, /dpr-sourceOverlay/)
   assert.match(source, /dpr-sourceImage/)
+  assert.match(source, /参考文献信息不完整，暂时无法解析/)
 
   const tree = T.SourcePageDialog({
     jobId: 'job-b1-test',

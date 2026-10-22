@@ -4,11 +4,13 @@
 // 全部副作用（CSS 注入、组件、注册）都在 factory 里，物化时才跑。
 //
 // 本次登记的东西（全部落在公共前缀 doraemon.* / dsh-doraemon-paper-reader 下，见 AGENTS.md §2.3）：
-//   1. 五个右侧栏页签类型（kind 前缀 doraemon-paper）：
+//   1. 七个右侧栏页签类型（kind 前缀 doraemon-paper）：
 //        doraemon-paper          主界面：问题 + 两条单篇入口 + 一条「多篇综述」通栏入口
 //        doraemon-paper-file     「PDF 文件」路径页
 //        doraemon-paper-lookup   「信息查询」路径页
 //        doraemon-paper-survey    多篇综述的选择页（选 2–3 篇）
+//        doraemon-paper-library   文档管理（批量导入、按需转义、回收站）
+//        doraemon-paper-knowledge 知识中心（检索、引用图、导出、阅读档案）
 //        doraemon-paper-reader-doc 阅读页
 //   2. `shell.overlay` 里的全宽对照视图（论文卡 / 七字段表 / 引用关系）
 //   3. 引导页入口胶囊、主对话批注条
@@ -41,6 +43,12 @@ window.__ModuleLoader__.load({
     /** 多篇综述的选择页；对照本身走全宽 shell.overlay。 */
     const SURVEY_KIND = 'doraemon-paper-survey'
     const SURVEY_ID = PATH_ID_PREFIX + 'survey'
+    /** 文档管理页。 */
+    const LIBRARY_KIND = 'doraemon-paper-library'
+    const LIBRARY_ID = PATH_ID_PREFIX + 'library'
+    /** 知识检索与阅读档案页。 */
+    const KNOWLEDGE_KIND = 'doraemon-paper-knowledge'
+    const KNOWLEDGE_ID = PATH_ID_PREFIX + 'knowledge'
     /** 全宽对照视图在 shell.overlay 里的注册 id。 */
     const COMPARE_ID = PATH_ID_PREFIX + 'compare'
     /** 最近一次抄写任务；页签关掉再回来时用它恢复后台任务。 */
@@ -48,6 +56,9 @@ window.__ModuleLoader__.load({
     const JOB_ID_RE = /^[A-Za-z0-9_-]{8,64}$/
     const LANG_STORAGE_PREFIX = 'doraemonPaperReader.langMode.'
     const SCROLL_STORAGE_PREFIX = 'doraemonPaperReader.scroll.'
+    const ANSWER_POLICY_STORAGE_KEY = 'doraemonPaperReader.answerPolicy'
+    const READER_MODE_STORAGE_PREFIX = 'doraemonPaperReader.readerMode.'
+    const RESEARCH_DIRECTION_STORAGE_KEY = 'doraemonPaperReader.researchDirection'
     const readerScrollMemory = new Map()
 
     /** 跨阅读页与主对话输入区共享的批注草稿。 */
@@ -194,13 +205,14 @@ window.__ModuleLoader__.load({
      * 全宽对照视图的共享状态：综述页、阅读页与 overlay 三处都能打开它。
      * runId 用来丢弃上一次打开留下的异步结果（换论文时旧请求可能后到）。
      */
-    function compareChatKey(jobIds, mode, citing) {
+    function compareChatKey(jobIds, mode, citing, surveyMode = 'method') {
       const ids = [...new Set((jobIds || []).map(String))].sort()
       return (
         'doraemonPaperReader.compareChat.' +
         ids.join('-') +
         '.' +
         mode +
+        (mode === 'survey' ? '.' + (surveyMode || 'method') : '') +
         (citing?.blockId ? '.' + String(citing.blockId) : '')
       )
     }
@@ -234,6 +246,7 @@ window.__ModuleLoader__.load({
         runId,
         key: '',
         mode: 'survey',
+        surveyMode: 'method',
         jobIds: [],
         citing: null,
         digests: [],
@@ -241,6 +254,8 @@ window.__ModuleLoader__.load({
         table: null,
         tableEdits: {},
         tableState: 'idle',
+        preflight: null,
+        forceCompare: false,
         citation: null,
         citationState: 'idle',
         messages: [],
@@ -271,13 +286,18 @@ window.__ModuleLoader__.load({
           const mode =
             patch?.mode === 'citation' ? 'citation' : patch?.mode === 'version' ? 'version' : 'survey'
           const jobIds = [...new Set((patch?.jobIds || []).map(String).filter(Boolean))]
-          const key = compareChatKey(jobIds, mode, patch?.citing)
+          const surveyMode =
+            patch?.surveyMode === 'gap' || patch?.surveyMode === 'report'
+              ? patch.surveyMode
+              : 'method'
+          const key = compareChatKey(jobIds, mode, patch?.citing, surveyMode)
           const same = state.key === key
           state = {
             open: true,
             runId,
             key,
             mode,
+            surveyMode,
             jobIds,
             citing: patch?.citing || null,
             digests: [],
@@ -285,6 +305,8 @@ window.__ModuleLoader__.load({
             table: null,
             tableEdits: loadTableEdits(key),
             tableState: 'idle',
+            preflight: patch?.preflight || null,
+            forceCompare: false,
             citation: null,
             citationState: 'idle',
             messages: same ? state.messages : loadCompareChat(key),
@@ -482,8 +504,15 @@ window.__ModuleLoader__.load({
   background:var(--dsw-alias-settings-card-fill);border:1px solid var(--dsw-alias-border-l2);
   border-radius:var(--dsw-radius-sm);cursor:pointer}
 .dpr-candidate:hover{background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-border-l3)}
+.dpr-candidate.is-primary{border-color:var(--dpr-brand);background:color-mix(in srgb,var(--dpr-brand) 8%,var(--dsw-alias-settings-card-fill))}
+.dpr-candidate.is-ambiguous{border-style:dashed}
+.dpr-candidateTop{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%}
+.dpr-candidateRank{display:inline-flex;align-items:center;gap:4px;color:var(--dpr-brand-strong);font-size:10px;font-weight:700}
+.dpr-candidateScore{flex:none;color:var(--dsw-alias-label-tertiary);font:10px/1.3 var(--dsw-font-mono,ui-monospace,monospace)}
 .dpr-candidateTitle{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary)}
 .dpr-candidateMeta{font-size:11px;color:var(--dsw-alias-label-tertiary)}
+.dpr-candidateReasons{font-size:10px;line-height:1.45;color:var(--dsw-alias-label-secondary)}
+.dpr-candidateAmbiguous{margin-top:2px;font-size:10px;color:var(--dpr-link)}
 .dpr-todo{display:flex;flex-direction:column;gap:10px;margin:0;padding:0;list-style:none}
 .dpr-todoItem{display:flex;gap:8px;align-items:flex-start;
   font-size:var(--dsh-content-font-size,14px);line-height:1.55;color:var(--dsw-alias-label-secondary)}
@@ -580,6 +609,15 @@ window.__ModuleLoader__.load({
   border-radius:var(--dsw-radius-sm);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-brand-primary);
   font-size:15px;font-weight:700}
 .dpr-surveyList{display:flex;flex-direction:column;gap:6px;width:100%;max-height:360px;overflow:auto}
+.dpr-surveyModes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;width:100%}
+.dpr-surveyMode{display:flex;flex-direction:column;gap:3px;min-width:0;padding:9px;text-align:left;
+  color:var(--dpr-ink-secondary);background:var(--dpr-surface-raised);border:1px solid var(--dpr-line);
+  border-radius:8px;cursor:pointer}
+.dpr-surveyMode b{font-size:12px;color:var(--dpr-ink)}
+.dpr-surveyMode span{font-size:10px;line-height:1.4;color:var(--dpr-ink-tertiary)}
+.dpr-surveyMode.is-active{border-color:var(--dpr-brand);
+  background:color-mix(in srgb,var(--dpr-brand) 9%,var(--dpr-surface-raised))}
+.dpr-surveyMode:focus-visible{outline:2px solid var(--dpr-brand);outline-offset:2px}
 .dpr-surveyRow{display:flex;align-items:flex-start;gap:8px;padding:8px 9px;cursor:pointer;
   background:var(--dsw-alias-settings-card-fill);border:1px solid var(--dsw-alias-settings-card-stroke);
   border-radius:var(--dsw-radius-sm)}
@@ -601,6 +639,18 @@ window.__ModuleLoader__.load({
   box-shadow:0 14px 44px color-mix(in srgb,var(--dsw-alias-label-primary) 18%,transparent)}
 .dpr-compareHeader{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
   padding:13px 17px;border-bottom:1px solid var(--dsw-alias-border-l2)}
+.dpr-cmpSurveyBrief{flex:none;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;
+  padding:8px 14px;background:color-mix(in srgb,var(--dpr-brand) 7%,var(--dpr-surface-raised));
+  border-bottom:1px solid var(--dpr-line);font-size:11px;line-height:1.45;color:var(--dpr-ink-secondary)}
+.dpr-cmpSurveyBrief.is-limited{border-left:3px solid var(--dpr-warn)}
+.dpr-cmpSurveyBrief.is-not-recommended{border-left:3px solid var(--dsw-alias-state-error-primary);
+  background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 6%,var(--dpr-surface-raised))}
+.dpr-cmpSurveyBriefMain{display:grid;gap:2px;min-width:0}
+.dpr-cmpSurveyBrief strong{font-size:12px;color:var(--dpr-ink)}
+.dpr-cmpSurveyBriefActions{display:flex;flex-wrap:wrap;gap:5px;flex:none}
+.dpr-cmpSurveyBriefActions button{min-height:30px;padding:4px 8px;font:inherit;font-size:10px;
+  color:var(--dpr-ink-secondary);background:transparent;border:1px solid var(--dpr-line);border-radius:6px;cursor:pointer}
+.dpr-cmpSurveyBriefActions button:hover{border-color:var(--dpr-brand)}
 .dpr-compareKicker{display:block;font-size:11px;letter-spacing:.04em;color:var(--dsw-alias-label-tertiary)}
 .dpr-compareTitle{margin:2px 0 0;font-size:calc(var(--dsh-content-font-size,14px) + 3px);line-height:1.35;
   color:var(--dsw-alias-label-primary);overflow-wrap:anywhere}
@@ -957,6 +1007,22 @@ window.__ModuleLoader__.load({
   .dpr-cmpPaperPane{min-height:45vh}
   .dpr-cmpLogicGrid{grid-template-columns:1fr}
 }
+@media (max-width:600px){
+  .dpr-compareRoot{left:0;right:auto;width:100vw;max-width:100vw;padding:0;overflow:hidden;z-index:1000}
+  .dpr-comparePanel{width:100vw;max-width:100vw;overflow:hidden}
+  .dpr-compareHeader,.dpr-cmpSurveyBrief,.dpr-cmpCitingBanner{max-width:100vw;box-sizing:border-box}
+  .dpr-cmpSurveyBrief{flex-direction:column}
+  .dpr-cmpSurveyBriefActions{width:100%}
+  .dpr-cmpArtWindow{
+    left:6px !important;
+    right:6px !important;
+    width:calc(100vw - 12px) !important;
+    max-width:calc(100vw - 12px) !important;
+    min-width:0 !important;
+    box-sizing:border-box;
+  }
+  .dpr-compareTable{min-width:0;width:100%}
+}
 
 @media (max-width:1100px){
   .dpr-compareRoot{padding:0}
@@ -983,6 +1049,7 @@ window.__ModuleLoader__.load({
   text-indent:0;color:var(--dsw-alias-label-primary)}
 .dpr-readerSeparator{height:1px;margin:18px 0;border:0;background:var(--dsw-alias-border-l2)}
 .dpr-readerAlgorithmRule{height:1px;margin:10px 0;border:0;background:var(--dsw-alias-border-l2)}
+.dpr-tableStructureMeta{margin-top:7px;font-size:11px;line-height:1.45;color:var(--dsw-alias-label-tertiary)}
 .dpr-biBlock{margin:0 0 16px}
 .dpr-biPair{margin:0 0 8px}
 .dpr-biSource{display:block;font-size:var(--dsh-content-font-size,14px);line-height:1.72;
@@ -1248,6 +1315,14 @@ window.__ModuleLoader__.load({
 .dpr-annotationMeta button{margin-left:auto;padding:2px 6px;font:inherit;font-size:11px;color:var(--dsw-alias-label-secondary);
   background:transparent;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;cursor:pointer}
 .dpr-annotationMeta button:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-brand-primary)}
+.dpr-answerPolicy{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:7px 8px;background:var(--dsw-alias-bg-layer-2);
+  border:1px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-sm)}
+.dpr-answerPolicyLabel{font-size:11px;font-weight:600;color:var(--dsw-alias-label-secondary)}
+.dpr-answerPolicy button{padding:4px 8px;font:inherit;font-size:11px;color:var(--dsw-alias-label-secondary);
+  background:transparent;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;cursor:pointer}
+.dpr-answerPolicy button.is-active{color:var(--dpr-brand-strong);border-color:var(--dpr-brand);
+  background:color-mix(in srgb,var(--dpr-brand) 10%,transparent)}
+.dpr-answerPolicyHint{flex-basis:100%;font-size:10px;line-height:1.4;color:var(--dsw-alias-label-tertiary)}
 .dpr-bubbleWrap{display:inline-flex;align-items:center;margin-left:6px;vertical-align:middle}
 .dpr-bubble{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;
   font:inherit;font-size:10px;line-height:1;color:var(--dpr-on-brand);cursor:pointer;
@@ -2097,7 +2172,7 @@ body[data-ds-dark-theme] .dpr-maintenanceOverlay){
 .dpr-readerBody{width:100%;max-width:none;padding:18px clamp(16px,2vw,32px) 74px}
 .dpr-readerLayout{
   display:grid;
-  grid-template-columns:clamp(176px,16vw,244px) minmax(0,1fr);
+  grid-template-columns:clamp(220px,18vw,286px) minmax(0,1fr);
   align-items:start;
   gap:16px;
   width:100%;
@@ -2107,6 +2182,9 @@ body[data-ds-dark-theme] .dpr-maintenanceOverlay){
 .dpr-readerOutline{
   position:sticky;
   top:var(--dpr-outline-top,12px);
+  display:flex;
+  flex-direction:column;
+  max-height:calc(100vh - var(--dpr-outline-top,12px) - 18px);
   padding:11px;
   background:color-mix(in srgb,var(--dpr-surface-raised) 92%,transparent);
   border:1px solid var(--dpr-line);
@@ -2116,14 +2194,26 @@ body[data-ds-dark-theme] .dpr-maintenanceOverlay){
   margin:0 0 8px;
   color:var(--dpr-ink-tertiary);
   font-family:var(--dsw-font-mono,ui-monospace,monospace);
-  font-size:8px;
+  flex:none;
+  font-size:10px;
   letter-spacing:.07em;
 }
-.dpr-readerOutline nav{display:grid;gap:2px}
+.dpr-outlineScroll{min-height:0;overflow:auto;padding-right:2px}
+.dpr-readerOutline nav{display:grid;gap:5px}
+.dpr-readerOutlineGroup{display:grid;gap:2px}
+.dpr-readerOutlineGroupLabel{
+  padding:5px 6px 3px;
+  color:var(--dpr-ink);
+  font-family:var(--dsw-font-mono,ui-monospace,monospace);
+  font-size:10px;
+  font-weight:800;
+  letter-spacing:.02em;
+}
+.dpr-readerOutlineGroupSummary{display:block;padding:0 6px 4px;color:var(--dpr-ink-tertiary);
+  font-size:10px;line-height:1.35}
 .dpr-readerOutlineItem{
   display:flex;
-  align-items:center;
-  justify-content:space-between;
+  align-items:flex-start;
   gap:5px;
   min-width:0;
   padding:6px 7px;
@@ -2133,12 +2223,14 @@ body[data-ds-dark-theme] .dpr-maintenanceOverlay){
   border:0;
   border-left:2px solid transparent;
   border-radius:0 5px 5px 0;
-  font-size:9px;
-  line-height:1.35;
+  font-size:12px;
+  line-height:1.42;
   cursor:pointer;
 }
-.dpr-readerOutlineItem span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dpr-readerOutlineItem small{flex:none;font-size:8px;opacity:.72}
+.dpr-readerOutlineMain{display:grid;gap:2px;min-width:0}
+.dpr-readerOutlineItem span{white-space:normal}
+.dpr-readerOutlineSecondary{font-size:10px;line-height:1.35;color:var(--dpr-ink-tertiary)}
+.dpr-readerOutlineItem small{flex:none;font-size:9px;opacity:.72}
 .dpr-readerOutlineItem:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dpr-ink)}
 .dpr-readerOutlineItem.is-active{
   color:var(--dpr-link);
@@ -2146,6 +2238,33 @@ body[data-ds-dark-theme] .dpr-maintenanceOverlay){
   border-left-color:var(--dpr-brand);
   font-weight:750;
 }
+.dpr-outlineFallback{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:7px;
+  flex:none;margin:6px 0 0;padding:7px;color:var(--dpr-ink-tertiary);background:var(--dpr-surface-raised);
+  border:1px solid var(--dpr-line);border-radius:7px;font-size:10px;line-height:1.4}
+.dpr-outlineRetry{padding:4px 7px;font:inherit;font-size:10px;color:var(--dpr-link);white-space:nowrap;
+  background:transparent;border:1px solid color-mix(in srgb,var(--dpr-link) 45%,var(--dpr-line));
+  border-radius:6px;cursor:pointer}
+.dpr-outlineRetry:hover{background:color-mix(in srgb,var(--dpr-link) 8%,transparent)}
+.dpr-readerModes{display:grid;gap:6px;flex:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--dpr-line)}
+.dpr-readerModeRow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
+.dpr-readerModeBtn{padding:5px 4px;font:inherit;font-size:10px;color:var(--dpr-ink-tertiary);
+  background:transparent;border:1px solid var(--dpr-line);border-radius:6px;cursor:pointer}
+.dpr-readerModeBtn.is-active{color:var(--dpr-brand-strong);border-color:var(--dpr-brand);
+  background:color-mix(in srgb,var(--dpr-brand) 10%,var(--dpr-surface-raised))}
+.dpr-readerModeHint{font-size:10px;line-height:1.35;color:var(--dpr-ink-tertiary)}
+.dpr-researchEditor{display:grid;gap:6px;padding:8px;background:var(--dpr-surface-raised);
+  border:1px solid var(--dpr-line);border-radius:7px}
+.dpr-researchEditor textarea{width:100%;min-height:70px;box-sizing:border-box;padding:6px;resize:vertical;
+  font:inherit;font-size:11px;line-height:1.4;color:var(--dpr-ink);background:var(--dpr-surface-base);
+  border:1px solid var(--dpr-line);border-radius:6px}
+.dpr-researchHelp{display:grid;gap:3px;padding:7px;color:var(--dpr-ink-secondary);
+  background:color-mix(in srgb,var(--dpr-brand) 7%,var(--dpr-surface-base));
+  border-left:3px solid var(--dpr-brand);border-radius:0 6px 6px 0;font-size:10px;line-height:1.45}
+.dpr-researchHelp strong{color:var(--dpr-ink);font-size:11px}
+.dpr-researchActions{display:flex;flex-wrap:wrap;gap:5px}
+.dpr-researchActions button{padding:4px 7px;font:inherit;font-size:10px;color:var(--dpr-ink-secondary);
+  background:transparent;border:1px solid var(--dpr-line);border-radius:6px;cursor:pointer}
+.dpr-researchActions button.is-primary{color:var(--dpr-on-brand);background:var(--dpr-brand-strong);border-color:var(--dpr-brand-strong)}
 .dpr-readerArticle{
   min-width:0;
   width:100%;
@@ -2209,17 +2328,22 @@ body[data-ds-dark-theme] .dpr-maintenanceOverlay){
   .dpr-readerLayout{grid-template-columns:1fr}
   .dpr-readerOutline{
     position:static;
-    display:flex;
+    display:grid;
     gap:8px;
-    overflow:auto;
-    align-items:center;
+    max-height:none;
   }
-  .dpr-readerOutline h3{flex:none;margin:0}
+  .dpr-readerOutline h3{margin:0}
+  .dpr-outlineScroll{overflow-x:auto;overflow-y:hidden}
   .dpr-readerOutline nav{display:flex;gap:4px}
-  .dpr-readerOutlineItem{flex:none;border-left:0;border:1px solid var(--dpr-line);border-radius:999px}
+  .dpr-readerOutlineGroup{display:contents}
+  .dpr-readerOutlineGroupLabel,.dpr-readerOutlineGroupSummary{display:none}
+  .dpr-readerOutlineItem{flex:none;max-width:230px;border-left:0;border:1px solid var(--dpr-line);border-radius:8px}
+  .dpr-readerModes{margin-top:0}
+  .dpr-readerModeRow{grid-template-columns:repeat(3,minmax(92px,1fr))}
   .dpr-readerArticle{padding:22px 20px 38px}
 }
 @media (max-width:420px){
+  .dpr-surveyModes{grid-template-columns:1fr}
   .dpr-homeCol,.dpr-importContent{padding-inline:12px}
   .dpr-homeHero{grid-template-columns:minmax(0,1fr) 88px;padding:16px 12px}
   .dpr-mascotSticker .dpr-mascot{width:72px;height:72px}
@@ -2319,6 +2443,200 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
 .dpr-readerMascotError .dpr-error{
   width:min(100%,560px);
   box-sizing:border-box;
+}
+.dpr-docPane{overflow:auto;background:var(--dpr-paper);color:var(--dpr-ink)}
+.dpr-homeDocManager{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;
+  padding:10px 12px;text-align:left;font:inherit;font-size:12px;color:var(--dpr-ink-secondary);
+  background:var(--dpr-surface-raised);border:1px solid var(--dpr-line);border-radius:8px;cursor:pointer}
+.dpr-homeDocManager:hover{color:var(--dpr-ink);border-color:var(--dpr-brand)}
+.dpr-homeDocManager b{color:var(--dpr-ink);font-size:13px}
+.dpr-docShell{display:flex;flex-direction:column;gap:14px;width:100%;max-width:1540px;margin:0 auto;
+  padding:14px clamp(12px,2vw,28px) 80px;box-sizing:border-box}
+.dpr-docTopbar{position:sticky;top:0;z-index:20;display:flex;flex-wrap:wrap;align-items:center;gap:8px;
+  padding:9px 10px;background:color-mix(in srgb,var(--dpr-paper) 94%,transparent);
+  border:1px solid var(--dpr-line);border-radius:9px;backdrop-filter:blur(12px)}
+.dpr-docTopbarTitle{min-width:0;flex:1;font-weight:800;color:var(--dpr-ink)}
+.dpr-docTopbarMeta{color:var(--dpr-ink-tertiary);font:11px/1.4 var(--dsw-font-mono,ui-monospace,monospace)}
+.dpr-docPrimary,.dpr-docSecondary,.dpr-docDanger,.dpr-docRowAction,.dpr-docFilter,.dpr-docViewBtn{
+  min-height:36px;padding:6px 10px;font:inherit;font-size:12px;font-weight:650;color:var(--dpr-ink-secondary);
+  background:var(--dpr-surface-raised);border:1px solid var(--dpr-line);border-radius:7px;cursor:pointer}
+.dpr-docPrimary{color:var(--dpr-on-brand);background:var(--dpr-brand-strong);border-color:var(--dpr-brand-strong)}
+.dpr-docDanger{color:var(--dpr-danger,var(--dsw-alias-state-error-primary));border-color:var(--dpr-danger,var(--dsw-alias-state-error-primary))}
+.dpr-docPrimary:hover,.dpr-docSecondary:hover,.dpr-docRowAction:hover,.dpr-docFilter:hover,.dpr-docViewBtn:hover{
+  filter:brightness(1.03)}
+.dpr-docPrimary:disabled,.dpr-docSecondary:disabled,.dpr-docDanger:disabled,.dpr-docRowAction:disabled{
+  opacity:.46;cursor:not-allowed}
+.dpr-docPrimary:focus-visible,.dpr-docSecondary:focus-visible,.dpr-docDanger:focus-visible,
+.dpr-docRowAction:focus-visible,.dpr-docFilter:focus-visible,.dpr-docViewBtn:focus-visible,
+.dpr-docSearch:focus-visible,.dpr-docSort:focus-visible,.dpr-docTitleButton:focus-visible{
+  outline:2px solid var(--dpr-brand);outline-offset:2px}
+.dpr-docHero{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:16px;
+  padding:18px;background:var(--dpr-surface-raised);border:1px solid var(--dpr-line);border-radius:12px}
+.dpr-docHero h2{margin:0 0 5px;font-size:clamp(19px,2.2vw,28px);line-height:1.18;color:var(--dpr-ink)}
+.dpr-docHero p{margin:0;max-width:72ch;color:var(--dpr-ink-secondary);font-size:13px;line-height:1.55}
+.dpr-docHeroArt{width:96px;height:96px;object-fit:contain}
+.dpr-docImportStrip{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;
+  padding:12px;background:color-mix(in srgb,var(--dpr-brand) 5%,var(--dpr-surface-raised));
+  border:1px dashed color-mix(in srgb,var(--dpr-brand) 46%,var(--dpr-line));border-radius:10px}
+.dpr-docDrop{min-height:64px;display:flex;flex-direction:column;justify-content:center;gap:3px;padding:9px 12px;
+  border-radius:8px;cursor:pointer;transition:background .16s ease,border-color .16s ease}
+.dpr-docDrop:hover,.dpr-docDrop.is-over{background:color-mix(in srgb,var(--dpr-brand) 10%,transparent)}
+.dpr-docDrop b{font-size:13px;color:var(--dpr-ink)}
+.dpr-docDrop span{font-size:11px;color:var(--dpr-ink-tertiary)}
+.dpr-fileInput{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+  clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.dpr-docStats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px}
+.dpr-docStat{padding:9px 10px;background:var(--dpr-surface-raised);border:1px solid var(--dpr-line);border-radius:8px}
+.dpr-docStat b{display:block;font:700 17px/1.15 var(--dsw-font-mono,ui-monospace,monospace);color:var(--dpr-ink)}
+.dpr-docStat span{display:block;margin-top:3px;font-size:10px;color:var(--dpr-ink-tertiary)}
+.dpr-docControls{display:flex;flex-wrap:wrap;align-items:center;gap:7px}
+.dpr-docSearch{flex:1 1 230px;min-height:38px;min-width:0;padding:6px 10px;font:inherit;font-size:13px;
+  color:var(--dpr-ink);background:var(--dpr-surface-base);border:1px solid var(--dpr-line);border-radius:7px}
+.dpr-docSort{min-height:38px;padding:6px 9px;font:inherit;font-size:12px;color:var(--dpr-ink-secondary);
+  background:var(--dpr-surface-base);border:1px solid var(--dpr-line);border-radius:7px}
+.dpr-docFilters{display:flex;flex-wrap:wrap;gap:5px}
+.dpr-docFilter{min-height:32px;padding:5px 9px;font-size:11px;background:transparent}
+.dpr-docFilter.is-active{color:var(--dpr-brand-strong);border-color:var(--dpr-brand);
+  background:color-mix(in srgb,var(--dpr-brand) 10%,transparent)}
+.dpr-docNotice{display:flex;align-items:flex-start;gap:7px;padding:9px 11px;font-size:12px;line-height:1.45;
+  color:var(--dpr-ink-secondary);background:color-mix(in srgb,var(--dpr-brand) 7%,var(--dpr-surface-raised));
+  border-left:3px solid var(--dpr-brand);border-radius:0 7px 7px 0}
+.dpr-docNotice.is-error{color:var(--dpr-danger,var(--dsw-alias-state-error-primary));
+  border-left-color:var(--dpr-danger,var(--dsw-alias-state-error-primary))}
+.dpr-docBulk{position:sticky;top:58px;z-index:15;display:flex;flex-wrap:wrap;align-items:center;gap:7px;
+  padding:8px 10px;background:var(--dpr-surface-raised);border:1px solid var(--dpr-brand);border-radius:8px;
+  box-shadow:0 4px 14px color-mix(in srgb,var(--dpr-ink) 12%,transparent)}
+.dpr-docBulk strong{margin-right:auto;font-size:12px;color:var(--dpr-ink)}
+.dpr-docList{display:flex;flex-direction:column;gap:7px}
+.dpr-docRow{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:10px;align-items:start;
+  padding:11px;background:var(--dpr-surface-raised);border:1px solid var(--dpr-line);border-radius:9px}
+.dpr-docRow.is-selected{border-color:var(--dpr-brand);
+  background:color-mix(in srgb,var(--dpr-brand) 6%,var(--dpr-surface-raised))}
+.dpr-docCheck{width:20px;height:20px;margin:2px 0 0;accent-color:var(--dpr-brand-strong);cursor:pointer}
+.dpr-docMain{display:grid;gap:5px;min-width:0}
+.dpr-docTitleLine{display:flex;align-items:flex-start;gap:7px;min-width:0}
+.dpr-docTitleButton{min-width:0;padding:0;text-align:left;font:inherit;font-size:14px;font-weight:750;line-height:1.4;
+  color:var(--dpr-ink);background:transparent;border:0;cursor:pointer;overflow-wrap:anywhere}
+.dpr-docTitleButton:hover{color:var(--dpr-link)}
+.dpr-docBadge{display:inline-flex;align-items:center;min-height:20px;padding:2px 6px;border-radius:999px;
+  font-size:10px;font-weight:700;white-space:nowrap;color:var(--dpr-ink-secondary);
+  background:var(--dpr-surface-base);border:1px solid var(--dpr-line)}
+.dpr-docBadge.is-ready{color:var(--dpr-success,var(--dsw-alias-state-success-primary));
+  border-color:color-mix(in srgb,var(--dpr-success,var(--dsw-alias-state-success-primary)) 55%,var(--dpr-line))}
+.dpr-docBadge.is-failed,.dpr-docBadge.is-missing{color:var(--dpr-danger,var(--dsw-alias-state-error-primary));
+  border-color:color-mix(in srgb,var(--dpr-danger,var(--dsw-alias-state-error-primary)) 55%,var(--dpr-line))}
+.dpr-docBadge.is-active{color:var(--dpr-warn);border-color:color-mix(in srgb,var(--dpr-warn) 55%,var(--dpr-line))}
+.dpr-docMeta{display:flex;flex-wrap:wrap;gap:5px 10px;font-size:11px;line-height:1.45;color:var(--dpr-ink-tertiary)}
+.dpr-docMeta span{overflow-wrap:anywhere}
+.dpr-docError{padding:7px 8px;font-size:11px;line-height:1.45;color:var(--dpr-danger,var(--dsw-alias-state-error-primary));
+  background:color-mix(in srgb,var(--dpr-danger,var(--dsw-alias-state-error-primary)) 7%,transparent);
+  border-radius:6px}
+.dpr-docActions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:5px;max-width:280px}
+.dpr-docRowAction{min-height:32px;padding:4px 8px;font-size:11px}
+.dpr-docEmpty{display:flex;flex-direction:column;align-items:center;gap:9px;padding:38px 18px;text-align:center;
+  background:var(--dpr-surface-raised);border:1px solid var(--dpr-line);border-radius:11px}
+.dpr-docEmpty img{width:132px;height:132px;object-fit:contain}
+.dpr-docEmpty h3{margin:0;font-size:17px;color:var(--dpr-ink)}
+.dpr-docEmpty p{max-width:52ch;margin:0;font-size:12px;line-height:1.55;color:var(--dpr-ink-secondary)}
+.dpr-docTrashHint{padding:10px 11px;font-size:12px;line-height:1.5;color:var(--dpr-ink-secondary);
+  background:var(--dpr-surface-base);border:1px solid var(--dpr-line);border-radius:8px}
+.dpr-knowledgePane{overflow:auto;background:var(--dpr-paper);color:var(--dpr-ink)}
+.dpr-knowledgeShell{display:flex;flex-direction:column;gap:13px;width:100%;max-width:1540px;margin:0 auto;
+  padding:14px clamp(12px,2vw,28px) 80px;box-sizing:border-box}
+.dpr-knowledgeHero{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:16px;
+  padding:17px;background:var(--dpr-surface-raised);border:1px solid var(--dpr-line);border-radius:11px}
+.dpr-knowledgeHero h2{margin:0 0 4px;font-size:clamp(19px,2.2vw,27px);line-height:1.2}
+.dpr-knowledgeHero p{margin:0;font-size:12px;line-height:1.55;color:var(--dpr-ink-secondary)}
+.dpr-knowledgeHero img{width:90px;height:90px;object-fit:contain}
+.dpr-knowledgeStats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}
+.dpr-knowledgeStat{padding:9px;background:var(--dpr-surface-raised);border:1px solid var(--dpr-line);border-radius:8px}
+.dpr-knowledgeStat b{display:block;font:750 17px/1.2 var(--dsw-font-mono,ui-monospace,monospace)}
+.dpr-knowledgeStat span{display:block;margin-top:2px;font-size:10px;color:var(--dpr-ink-tertiary)}
+.dpr-knowledgeGrid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(260px,.7fr);gap:12px;align-items:start}
+.dpr-knowledgePanel{display:flex;flex-direction:column;gap:9px;min-width:0;padding:12px;
+  background:var(--dpr-surface-raised);border:1px solid var(--dpr-line);border-radius:9px}
+.dpr-knowledgePanelHead{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.dpr-knowledgePanelHead h3{margin:0;font-size:14px;line-height:1.35}
+.dpr-knowledgePanelHead span{font-size:10px;color:var(--dpr-ink-tertiary)}
+.dpr-knowledgeSearchRow{display:flex;gap:6px}
+.dpr-knowledgeSearch{flex:1;min-width:0;min-height:40px;padding:7px 10px;font:inherit;font-size:13px;
+  color:var(--dpr-ink);background:var(--dpr-surface-base);border:1px solid var(--dpr-line);border-radius:7px}
+.dpr-knowledgeSearch:focus-visible,.dpr-knowledgeSelect:focus-visible,
+.dpr-knowledgeBtn:focus-visible,.dpr-knowledgeResult:focus-visible{outline:2px solid var(--dpr-brand);outline-offset:2px}
+.dpr-knowledgeBtn,.dpr-knowledgeSelect{min-height:38px;padding:6px 9px;font:inherit;font-size:13px;color:var(--dpr-ink-secondary);
+  background:var(--dpr-surface-base);border:1px solid var(--dpr-line);border-radius:7px;cursor:pointer}
+.dpr-knowledgeBtn.is-primary{color:var(--dpr-on-brand);background:var(--dpr-brand-strong);border-color:var(--dpr-brand-strong)}
+.dpr-knowledgeBtn:disabled{opacity:.46;cursor:not-allowed}
+.dpr-knowledgeFilters{display:flex;flex-wrap:wrap;gap:4px}
+.dpr-knowledgeFilter{min-height:30px;padding:4px 8px;font:inherit;font-size:10px;color:var(--dpr-ink-secondary);
+  background:transparent;border:1px solid var(--dpr-line);border-radius:999px;cursor:pointer}
+.dpr-knowledgeFilter.is-active{color:var(--dpr-brand-strong);border-color:var(--dpr-brand);
+  background:color-mix(in srgb,var(--dpr-brand) 9%,transparent)}
+.dpr-knowledgeResults{display:flex;flex-direction:column;gap:8px}
+.dpr-knowledgePaperGroup{display:flex;flex-direction:column;gap:5px;padding-top:7px;border-top:1px solid var(--dpr-line)}
+.dpr-knowledgePaperGroup:first-child{border-top:0;padding-top:0}
+.dpr-knowledgePaperTitle{font-size:12px;font-weight:750;color:var(--dpr-ink);overflow-wrap:anywhere}
+.dpr-knowledgePaperMeta{font-size:10px;color:var(--dpr-ink-tertiary)}
+.dpr-knowledgeResult{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;width:100%;padding:8px;
+  text-align:left;font:inherit;color:var(--dpr-ink-secondary);background:var(--dpr-surface-base);
+  border:1px solid var(--dpr-line);border-radius:7px;cursor:pointer}
+.dpr-knowledgeResult:hover{border-color:var(--dpr-brand)}
+.dpr-knowledgeResultMain{display:grid;gap:3px;min-width:0}
+.dpr-knowledgeResultTop{display:flex;flex-wrap:wrap;align-items:center;gap:5px}
+.dpr-knowledgeType{display:inline-flex;padding:1px 5px;font-size:9px;font-weight:700;color:var(--dpr-brand-strong);
+  border:1px solid color-mix(in srgb,var(--dpr-brand) 50%,var(--dpr-line));border-radius:999px}
+.dpr-knowledgeSnippet{font-size:11px;line-height:1.5;color:var(--dpr-ink-secondary);overflow-wrap:anywhere}
+.dpr-knowledgePath{font-size:9px;color:var(--dpr-ink-tertiary)}
+.dpr-knowledgeScore{font:10px/1.3 var(--dsw-font-mono,ui-monospace,monospace);color:var(--dpr-ink-tertiary)}
+.dpr-knowledgeAnswer{padding:9px;font-size:12px;line-height:1.65;color:var(--dpr-ink-secondary);
+  background:color-mix(in srgb,var(--dpr-brand) 6%,var(--dpr-surface-base));border-radius:7px;overflow-wrap:anywhere}
+.dpr-knowledgeAnswer p{margin:0 0 7px}.dpr-knowledgeAnswer ul,.dpr-knowledgeAnswer ol{margin:5px 0;padding-left:20px}
+.dpr-knowledgeGraph{width:100%;height:auto;min-height:230px;background:var(--dpr-surface-base);
+  border:1px solid var(--dpr-line);border-radius:8px;overflow:visible}
+.dpr-knowledgeGraphEdge{stroke:color-mix(in srgb,var(--dpr-ink-tertiary) 55%,transparent);stroke-width:1.5}
+.dpr-knowledgeGraphEdge.is-unanchored{stroke-dasharray:4 4}
+.dpr-knowledgeGraphNode{cursor:pointer}
+.dpr-knowledgeGraphNode circle{fill:var(--dpr-surface-raised);stroke:var(--dpr-brand);stroke-width:1.5}
+.dpr-knowledgeGraphNode.is-center circle{fill:var(--dpr-brand-strong);stroke:var(--dpr-brand-strong)}
+.dpr-knowledgeGraphNode.is-incoming circle{stroke:var(--dpr-warn)}
+.dpr-knowledgeGraphNode text{fill:var(--dpr-ink-secondary);font-size:9px;pointer-events:none}
+.dpr-knowledgeGraphNode.is-center text{fill:var(--dpr-on-brand)}
+.dpr-knowledgeGraphLegend{display:flex;flex-wrap:wrap;gap:6px 10px;font-size:10px;color:var(--dpr-ink-tertiary)}
+.dpr-knowledgeActions{display:flex;flex-wrap:wrap;gap:5px}
+.dpr-knowledgeActions button{min-height:33px;padding:5px 8px;font:inherit;font-size:10px;color:var(--dpr-ink-secondary);
+  background:transparent;border:1px solid var(--dpr-line);border-radius:6px;cursor:pointer}
+.dpr-knowledgeActions button:hover{border-color:var(--dpr-brand)}
+.dpr-knowledgeNext{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
+.dpr-knowledgeNext li{padding:7px;font-size:11px;line-height:1.45;color:var(--dpr-ink-secondary);
+  background:var(--dpr-surface-base);border:1px solid var(--dpr-line);border-radius:7px}
+.dpr-knowledgeNext button{display:block;width:100%;padding:0;text-align:left;font:inherit;color:inherit;
+  background:transparent;border:0;cursor:pointer}
+@media (max-width:980px){
+  .dpr-knowledgeGrid{grid-template-columns:1fr}
+}
+@media (max-width:760px){
+  .dpr-docShell{padding:10px 10px 84px}
+  .dpr-docHero{grid-template-columns:1fr}
+  .dpr-docHeroArt{display:none}
+  .dpr-docStats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .dpr-docImportStrip{grid-template-columns:1fr}
+  .dpr-docRow{grid-template-columns:24px minmax(0,1fr)}
+  .dpr-docActions{grid-column:2;justify-content:flex-start;max-width:none}
+  .dpr-knowledgeShell{padding:10px 10px 84px}
+  .dpr-knowledgeHero{grid-template-columns:1fr}
+  .dpr-knowledgeHero img{display:none}
+  .dpr-knowledgeStats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .dpr-knowledgeSearchRow{flex-wrap:wrap}
+  .dpr-knowledgeSearch{flex-basis:100%}
+  .dpr-knowledgeResult{grid-template-columns:1fr}
+}
+@media (max-width:460px){
+  .dpr-docTopbar{align-items:flex-start}
+  .dpr-docTopbarTitle{flex-basis:100%}
+  .dpr-docStats{grid-template-columns:1fr 1fr}
+  .dpr-docBulk{top:6px}
+  .dpr-docRow{padding:9px}
+  .dpr-docTitleLine{flex-direction:column;align-items:flex-start}
 }
 @media (prefers-reduced-motion:reduce){
   .dpr-mascotSprite .dpr-mascotSpriteImage{
@@ -2684,7 +3002,7 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
       'reader.added': '已加入批注，去对话里改问题并发送。',
       'reader.return': '回到阅读',
       'home.surveyTitle': '多篇综述',
-      'home.surveyDesc': '把两三篇放在一起，按同一张表比',
+      'home.surveyDesc': '方法对照、研究缺口、证据报告，先判断是否可比',
       'home.surveyGo': '开始对照 →',
       'survey.title': '陛下要拿哪几篇来对照',
       'survey.lead': '选 2–3 篇；小的我只抽摘要、章节和关键段，不把整篇重传。',
@@ -2837,7 +3155,7 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
       'reader.added': 'Added as an annotation; edit the question and send it in the conversation.',
       'reader.return': 'Back to reading',
       'home.surveyTitle': 'Literature review',
-      'home.surveyDesc': 'Put two or three papers on one comparison table',
+      'home.surveyDesc': 'Compare methods, map research gaps, and build evidence reports',
       'home.surveyGo': 'Start comparing →',
       'survey.title': 'Which papers should little old me compare',
       'survey.lead': 'Pick 2–3; little old me only extracts the abstract, sections and key passages, not the whole paper.',
@@ -3225,6 +3543,36 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
             React.createElement('span', { className: 'dpr-cardDesc' }, t('home.surveyDesc')),
             React.createElement('span', { className: 'dpr-cardGo' }, t('home.surveyGo')),
           ),
+          React.createElement(
+            'button',
+            {
+              type: 'button',
+              className: 'dpr-homeDocManager',
+              onClick: () => actions.openTab(LIBRARY_KIND),
+            },
+            React.createElement('b', null, '文档管理'),
+            React.createElement(
+              'span',
+              null,
+              '批量导入 · 按需转义 · 回收站 · ' +
+                String(library.papers.length).padStart(2, '0') +
+                ' 篇可阅读',
+            ),
+          ),
+          React.createElement(
+            'button',
+            {
+              type: 'button',
+              className: 'dpr-homeDocManager',
+              onClick: () => actions.openTab(KNOWLEDGE_KIND),
+            },
+            React.createElement('b', null, '知识中心'),
+            React.createElement(
+              'span',
+              null,
+              '跨论文检索 · 引用图谱 · 导出 · 阅读档案',
+            ),
+          ),
           React.createElement('p', { className: 'dpr-note' }, t('home.note')),
           library.papers.length > 0
             ? React.createElement(
@@ -3350,7 +3698,19 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
       const t = props.t
       const library = useLibrary()
       const [selected, setSelected] = useState([])
+      const [surveyMode, setSurveyMode] = useState('method')
       const [notice, setNotice] = useState('')
+      const surveyModeOptions = [
+        { value: 'method', title: '2 篇方法对照', desc: '先判断是否可比，再比方法、数据与指标' },
+        { value: 'gap', title: '3 篇研究缺口', desc: '聚类共同覆盖、冲突和尚未验证的空白' },
+        { value: 'report', title: '综述报告', desc: '从证据表生成有锚点的背景、路线与下一步' },
+      ]
+      const requiredCount =
+        surveyMode === 'method'
+          ? [2, 2]
+          : surveyMode === 'gap'
+            ? [3, 3]
+            : [2, 3]
 
       const toggle = (jobId) => {
         if (selected.includes(jobId)) {
@@ -3367,11 +3727,15 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
       }
 
       const start = () => {
-        if (selected.length < 2) {
-          setNotice('至少选 2 篇。')
+        if (selected.length < requiredCount[0] || selected.length > requiredCount[1]) {
+          setNotice(
+            requiredCount[0] === requiredCount[1]
+              ? '这个任务需要正好选 ' + requiredCount[0] + ' 篇。'
+              : '这个任务需要选 ' + requiredCount[0] + '–' + requiredCount[1] + ' 篇。',
+          )
           return
         }
-        comparisonStore.open({ mode: 'survey', jobIds: selected })
+        comparisonStore.open({ mode: 'survey', surveyMode, jobIds: selected })
         setNotice('已打开对照视图。')
       }
 
@@ -3388,7 +3752,33 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
               ? mascotArt(t, 120, { src: MASCOT_ASSETS.stackBooks, altKey: 'art.mascot.stack' })
               : null,
             React.createElement('h2', { className: 'dpr-question' }, t('survey.title')),
-            React.createElement('p', { className: 'dpr-sub' }, t('survey.lead')),
+            React.createElement(
+              'p',
+              { className: 'dpr-sub' },
+              '先选择任务目标，再挑论文。系统会先判断是否可比，避免把同篇版本或无关论文硬塞进一张表。',
+            ),
+          ),
+          React.createElement(
+            'div',
+            { className: 'dpr-surveyModes', role: 'radiogroup', 'aria-label': '综述任务类型' },
+            surveyModeOptions.map((option) =>
+              React.createElement(
+                'button',
+                {
+                  key: option.value,
+                  type: 'button',
+                  role: 'radio',
+                  'aria-checked': surveyMode === option.value,
+                  className: 'dpr-surveyMode' + (surveyMode === option.value ? ' is-active' : ''),
+                  onClick: () => {
+                    setSurveyMode(option.value)
+                    setNotice('')
+                  },
+                },
+                React.createElement('b', null, option.title),
+                React.createElement('span', null, option.desc),
+              ),
+            ),
           ),
           library.papers.length === 0
             ? React.createElement('p', { className: 'dpr-note' }, t('survey.empty'))
@@ -3400,6 +3790,7 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
                     'label',
                     {
                       key: paper.jobId,
+                      'data-job-id': paper.jobId,
                       className: 'dpr-surveyRow' + (selected.includes(paper.jobId) ? ' is-selected' : ''),
                     },
                     React.createElement('input', {
@@ -3429,14 +3820,20 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
           React.createElement(
             'p',
             { className: 'dpr-note' },
-            t('survey.selected') + selected.length + ' / 3' + (notice ? ' · ' + notice : ''),
+            t('survey.selected') +
+              selected.length +
+              ' / ' +
+              (requiredCount[0] === requiredCount[1] ? requiredCount[0] : requiredCount[0] + '–' + requiredCount[1]) +
+              ' · ' +
+              (surveyModeOptions.find((option) => option.value === surveyMode)?.title || '') +
+              (notice ? ' · ' + notice : ''),
           ),
           React.createElement(
             'button',
             {
               type: 'button',
               className: 'dpr-primary',
-              disabled: selected.length < 2,
+              disabled: selected.length < requiredCount[0] || selected.length > requiredCount[1],
               onClick: start,
             },
             t('survey.start') + (selected.length ? '（' + selected.length + '）' : ''),
@@ -3871,13 +4268,16 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
             ? React.createElement(
                 'div',
                 { className: 'dpr-annotationList' },
-                result.candidates.map((candidate) =>
+                result.candidates.map((candidate, index) =>
                   React.createElement(
                     'button',
                     {
                       key: candidate.doi || candidate.arxiv || candidate.title,
                       type: 'button',
-                      className: 'dpr-candidate',
+                      className:
+                        'dpr-candidate' +
+                        (candidate.isPrimary ? ' is-primary' : '') +
+                        (candidate.isAmbiguous ? ' is-ambiguous' : ''),
                       onClick: () =>
                         candidate.existingJobId
                           ? openReader(candidate.existingJobId)
@@ -3888,6 +4288,24 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
                               query: '',
                             }),
                     },
+                    React.createElement(
+                      'span',
+                      { className: 'dpr-candidateTop' },
+                      React.createElement(
+                        'span',
+                        { className: 'dpr-candidateRank' },
+                        candidate.isPrimary ? '最可能匹配' : '候选 ' + (index + 1),
+                      ),
+                      React.createElement(
+                        'span',
+                        { className: 'dpr-candidateScore' },
+                        '匹配分 ' +
+                          (Number(candidate.matchScore) || 0) +
+                          '/100 · ' +
+                          (candidate.confidenceLabel || '低') +
+                          '置信',
+                      ),
+                    ),
                     React.createElement('span', { className: 'dpr-candidateTitle' }, candidate.title),
                     React.createElement(
                       'span',
@@ -3896,6 +4314,20 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
                         .filter(Boolean)
                         .join(' · '),
                     ),
+                    (candidate.reasons || []).length
+                      ? React.createElement(
+                          'span',
+                          { className: 'dpr-candidateReasons' },
+                          candidate.reasons.slice(0, 3).join('；'),
+                        )
+                      : null,
+                    candidate.isAmbiguous
+                      ? React.createElement(
+                          'span',
+                          { className: 'dpr-candidateAmbiguous' },
+                          '前两项匹配分接近，请核对标题与来源。',
+                        )
+                      : null,
                   ),
                 ),
               )
@@ -4205,15 +4637,36 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
                 'div',
                 { className: 'dpr-annotationList' },
                 React.createElement('p', { className: 'dpr-citeMetaLine' }, '找到多篇候选，选一篇继续：'),
-                (state.candidates || []).map((candidate) =>
+                (state.candidates || []).map((candidate, index) =>
                   React.createElement(
                     'button',
                     {
                       key: candidate.doi || candidate.arxiv || candidate.title,
                       type: 'button',
-                      className: 'dpr-candidate',
+                      className:
+                        'dpr-candidate' +
+                        (candidate.isPrimary ? ' is-primary' : '') +
+                        (candidate.isAmbiguous ? ' is-ambiguous' : ''),
                       onClick: () => onChooseCandidate(candidate),
                     },
+                    React.createElement(
+                      'span',
+                      { className: 'dpr-candidateTop' },
+                      React.createElement(
+                        'span',
+                        { className: 'dpr-candidateRank' },
+                        candidate.isPrimary ? '最可能原文引用' : '候选 ' + (index + 1),
+                      ),
+                      React.createElement(
+                        'span',
+                        { className: 'dpr-candidateScore' },
+                        '匹配分 ' +
+                          (Number(candidate.matchScore) || 0) +
+                          '/100 · ' +
+                          (candidate.confidenceLabel || '低') +
+                          '置信',
+                      ),
+                    ),
                     React.createElement('span', { className: 'dpr-candidateTitle' }, candidate.title || '未命名论文'),
                     React.createElement(
                       'span',
@@ -4222,6 +4675,20 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
                         .filter(Boolean)
                         .join(' · '),
                     ),
+                    (candidate.reasons || []).length
+                      ? React.createElement(
+                          'span',
+                          { className: 'dpr-candidateReasons' },
+                          candidate.reasons.slice(0, 3).join('；'),
+                        )
+                      : null,
+                    candidate.isAmbiguous
+                      ? React.createElement(
+                          'span',
+                          { className: 'dpr-candidateAmbiguous' },
+                          '前两项匹配分接近，请核对后再选。',
+                        )
+                      : null,
                   ),
                 ),
               )
@@ -5018,7 +5485,13 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
           cells: field.cells.map((cell) => {
             const key = field.key + '|' + cell.jobId
             if (!(key in edits)) return cell
-            return { ...cell, text: String(edits[key] ?? ''), edited: true }
+            return {
+              ...cell,
+              text: String(edits[key] ?? ''),
+              edited: true,
+              manual: true,
+              grounded: false,
+            }
           }),
         })),
       }
@@ -5391,6 +5864,15 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
       const items = useAnnotations()
       const [open, setOpen] = useState(true)
       const [status, setStatus] = useState('')
+      const [evidenceMode, setEvidenceMode] = useState(() => {
+        try {
+          return window.localStorage?.getItem(ANSWER_POLICY_STORAGE_KEY) === 'paper-only'
+            ? 'paper-only'
+            : 'allow-external'
+        } catch {
+          return 'allow-external'
+        }
+      })
       const pending = items.filter((item) => !item.sent)
       const paperCount = new Set(
         pending.map((item) => item.context?.paper?.doi || item.context?.paper?.title || item.jobId),
@@ -5400,6 +5882,16 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
       const propsRef = useRef(props)
       propsRef.current = props
       const sendingRef = useRef(false)
+      const evidenceModeRef = useRef(evidenceMode)
+      evidenceModeRef.current = evidenceMode
+
+      useEffect(() => {
+        try {
+          window.localStorage?.setItem(ANSWER_POLICY_STORAGE_KEY, evidenceMode)
+        } catch {
+          // 隐私模式下只在当前打开期间保留选择。
+        }
+      }, [evidenceMode])
 
       const annotationPlace = (item) => {
         if (item.segments.length > 1) return item.segments.length + ' 段'
@@ -5453,14 +5945,35 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
         }
         sendingRef.current = true
         setStatus('正在把 ' + current.length + ' 个批注挂到这条消息…')
+        const modes = new Set(
+          current.map((item) => item.context?.answerMode || 'default'),
+        )
+        const packetMode =
+          modes.size === 0
+            ? 'default'
+            : modes.size === 1
+              ? [...modes][0]
+              : 'mixed'
+        const packetResearchDirection =
+          packetMode === 'research'
+            ? String(current.find((item) => item.context?.researchDirection)?.context?.researchDirection || '')
+            : ''
         const packet = {
           type: 'doraemon-annotations',
           // 主输入框里的文字就是这次批注的整体问题。
           question: draft,
+          answerPolicy: {
+            evidenceMode: evidenceModeRef.current,
+            critique: 'on-request',
+            mode: packetMode,
+            researchDirection: packetResearchDirection,
+          },
           annotations: current.map((item, index) => ({
             index: index + 1,
             jobId: item.jobId,
             question: item.question,
+            answerMode: item.context?.answerMode || 'default',
+            researchDirection: item.context?.researchDirection || '',
             context: item.context,
             segments: item.segments,
           })),
@@ -5539,6 +6052,40 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
           ? React.createElement(
               React.Fragment,
               null,
+              React.createElement(
+                'div',
+                { className: 'dpr-answerPolicy', role: 'radiogroup', 'aria-label': '回答证据范围' },
+                React.createElement('span', { className: 'dpr-answerPolicyLabel' }, '回答方式'),
+                React.createElement(
+                  'button',
+                  {
+                    type: 'button',
+                    role: 'radio',
+                    'aria-checked': evidenceMode === 'allow-external',
+                    className: evidenceMode === 'allow-external' ? 'is-active' : '',
+                    onClick: () => setEvidenceMode('allow-external'),
+                  },
+                  '默认精读',
+                ),
+                React.createElement(
+                  'button',
+                  {
+                    type: 'button',
+                    role: 'radio',
+                    'aria-checked': evidenceMode === 'paper-only',
+                    className: evidenceMode === 'paper-only' ? 'is-active' : '',
+                    onClick: () => setEvidenceMode('paper-only'),
+                  },
+                  '只根据原文',
+                ),
+                React.createElement(
+                  'span',
+                  { className: 'dpr-answerPolicyHint' },
+                  evidenceMode === 'paper-only'
+                    ? '本次只使用论文原文；不会把外部知识写成作者结论。'
+                    : '本次可补充外部背景，但必须标明来源；无联网时会明确“未做外部核验”。',
+                ),
+              ),
               React.createElement(
                 'div',
                 { className: 'dpr-annotationList' },
@@ -6017,6 +6564,21 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
               null,
               (block.label ? block.label + '：' : '') + caption,
             ),
+            block.type === 'table' && block.tableStructure
+              ? React.createElement(
+                  'div',
+                  { className: 'dpr-tableStructureMeta' },
+                  '结构识别：' +
+                    (Number(block.tableStructure.rowCount) || 0) +
+                    ' 行 × ' +
+                    (Number(block.tableStructure.columnCount) || 0) +
+                    ' 列' +
+                    (block.continuation
+                      ? ' · 续表，承接 p.' + (Number(block.continuationOfPage) || '?')
+                      : '') +
+                    ' · 请与原表核对',
+                )
+              : null,
             formula && formula.valid && formula.latex
               ? React.createElement(
                   'details',
@@ -7310,7 +7872,11 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
                 ? '引用关系'
                 : state.mode === 'version'
                   ? '版本差异'
-                  : '多篇综合',
+                  : state.surveyMode === 'gap'
+                    ? '研究缺口'
+                    : state.surveyMode === 'report'
+                      ? '综述报告'
+                      : '方法对照',
             ),
           ),
           React.createElement(
@@ -7418,6 +7984,9 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
                 'div',
                 { className: 'dpr-cmpCommands' },
                 React.createElement('button', { type: 'button', onClick: () => onCommand('table') }, '生成对照表'),
+                state.mode === 'survey'
+                  ? React.createElement('button', { type: 'button', onClick: () => onCommand('gaps') }, '研究缺口')
+                  : null,
                 React.createElement('button', { type: 'button', onClick: () => onCommand('logic') }, '论证链'),
                 React.createElement('button', { type: 'button', onClick: () => onCommand('concept') }, '概念图'),
                 React.createElement('button', { type: 'button', onClick: () => onCommand('structure') }, '结构统计'),
@@ -7449,7 +8018,7 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
                 { className: 'dpr-cmpComposer' },
                 React.createElement('textarea', {
                   value: draft,
-                  placeholder: '问这两篇论文，或输入「生成表格」「画概念图」…',
+                  placeholder: '问这组论文，或输入「生成表格」「找研究缺口」「写综述报告」…',
                   onChange: (event) => setDraft(event.target.value),
                   onKeyDown: (event) => {
                     if (event.key === 'Enter' && !event.shiftKey) {
@@ -7501,6 +8070,7 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
           if (jobIds.length < 2 || jobIds.length > 3) return
           comparisonStore.open({
             mode: detail.mode === 'citation' ? 'citation' : 'survey',
+            surveyMode: detail.surveyMode || 'method',
             jobIds,
             citing:
               detail.citing && JOB_ID_RE.test(String(detail.citing.jobId || ''))
@@ -7517,6 +8087,8 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
         let alive = true
         postApi('compare/digests', {
           jobIds: state.jobIds,
+          mode: state.mode,
+          surveyMode: state.surveyMode,
           ...(state.mode === 'citation' && state.citing ? { citing: state.citing } : {}),
         })
           .then((payload) => {
@@ -7524,6 +8096,8 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
             comparisonStore.patch({
               digests: Array.isArray(payload.digests) ? payload.digests : [],
               citing: payload.citing || state.citing,
+              surveyMode: payload.surveyMode || state.surveyMode,
+              preflight: payload.preflight || null,
               digestState: 'done',
             })
           })
@@ -8079,6 +8653,7 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
           if (jobIds.length < 2 || jobIds.length > 3) return
           comparisonStore.open({
             mode: detail.mode === 'citation' ? 'citation' : 'survey',
+            surveyMode: detail.surveyMode || 'method',
             jobIds,
             citing:
               detail.citing && JOB_ID_RE.test(String(detail.citing.jobId || ''))
@@ -8095,6 +8670,8 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
         let alive = true
         postApi('compare/digests', {
           jobIds: state.jobIds,
+          mode: state.mode,
+          surveyMode: state.surveyMode,
           ...(state.mode === 'citation' && state.citing ? { citing: state.citing } : {}),
         })
           .then((payload) => {
@@ -8102,6 +8679,8 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
             comparisonStore.patch({
               digests: Array.isArray(payload.digests) ? payload.digests : [],
               citing: payload.citing || state.citing,
+              surveyMode: payload.surveyMode || state.surveyMode,
+              preflight: payload.preflight || null,
               digestState: 'done',
             })
           })
@@ -8219,18 +8798,35 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
         }
       }
 
-      const ensureTable = async () => {
+      const ensureTable = async ({ forceCompare = false } = {}) => {
         if (state.table) return state.table
         if (busy === 'table') return null
         setBusy('table')
         setLocalError('')
         try {
-          const payload = await postApi('compare/table', { jobIds: state.jobIds })
+          const payload = await postApi('compare/table', {
+            jobIds: state.jobIds,
+            surveyMode: state.surveyMode,
+            forceCompare: Boolean(forceCompare || state.forceCompare),
+          })
           if (comparisonStore.getSnapshot().runId !== runId) return null
+          if (payload.kind === 'not-comparable') {
+            comparisonStore.patch({ preflight: payload.preflight || null })
+            setLocalError(
+              '这组论文不建议直接按七字段比较。' +
+                ((payload.preflight?.reasons || []).join('；') || '请返回重新选文。'),
+            )
+            return null
+          }
+          if (payload.kind === 'table-error') {
+            setLocalError(payload.message || '模型返回结构异常，请稍后重试。')
+            return null
+          }
           const table = applyTableEdits(payload.table || null, state.tableEdits)
           comparisonStore.patch({
             table,
             tableState: 'done',
+            preflight: payload.preflight || table?.preflight || state.preflight,
             digests: Array.isArray(payload.digests) ? payload.digests : state.digests,
           })
           return table
@@ -8367,6 +8963,22 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
         }
       }
 
+      const generateSurveyReport = async () => {
+        const table = await ensureTable()
+        if (!table) return ''
+        try {
+          const payload = await postApi('compare/survey-report', {
+            jobIds: state.jobIds,
+            surveyMode: state.surveyMode,
+            table,
+          })
+          return String(payload.report || '')
+        } catch (cause) {
+          setLocalError(cause?.message || String(cause))
+          return ''
+        }
+      }
+
       const runCommand = async (kind) => {
         if (kind === 'table') {
           await buildTable()
@@ -8402,27 +9014,35 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
           return
         }
         if (kind === 'report') {
-          const report = buildCompareReport({
-            digests: state.digests,
-            table: state.table,
-            annotations,
-            messages: state.messages,
-            citation: state.citation,
-            mode: state.mode,
-          })
+          const report =
+            state.mode === 'survey'
+              ? await generateSurveyReport()
+              : buildCompareReport({
+                  digests: state.digests,
+                  table: state.table,
+                  annotations,
+                  messages: state.messages,
+                  citation: state.citation,
+                  mode: state.mode,
+                })
+          if (!report) return
           downloadTextFile('compare-report.md', report)
-          setNotice('对照报告已生成并下载。')
+          setNotice(state.mode === 'survey' ? '证据型综述报告已生成并下载。' : '对照报告已生成并下载。')
           return
         }
         if (kind === 'archive') {
-          const report = buildCompareReport({
-            digests: state.digests,
-            table: state.table,
-            annotations,
-            messages: state.messages,
-            citation: state.citation,
-            mode: state.mode,
-          })
+          const report =
+            state.mode === 'survey'
+              ? await generateSurveyReport()
+              : buildCompareReport({
+                  digests: state.digests,
+                  table: state.table,
+                  annotations,
+                  messages: state.messages,
+                  citation: state.citation,
+                  mode: state.mode,
+                })
+          if (!report) return
           try {
             const payload = await postApi('compare/archive', {
               jobIds: state.jobIds,
@@ -8438,6 +9058,71 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
           } catch (cause) {
             setLocalError(cause?.message || String(cause))
           }
+          return
+        }
+        if (kind === 'gaps') {
+          const table = await ensureTable()
+          if (!table) return
+          const grounded = (table.gaps || []).filter((gap) => gap.kind === 'grounded')
+          const inference = (table.gaps || []).filter((gap) => gap.kind === 'model-inference')
+          const text = [
+            '# 跨论文关系与研究缺口',
+            '',
+            '## 共同覆盖、差异、冲突与互补',
+            ...(Array.isArray(table.relations) && table.relations.length
+              ? table.relations.map(
+                  (relation) =>
+                    '- ' +
+                    ({
+                      shared: '共同覆盖',
+                      difference: '设定/方法差异',
+                      conflict: '结论冲突',
+                      complement: '互补关系',
+                    }[relation.type] || '关系') +
+                    '：' +
+                    relation.text +
+                    ' [' +
+                    (relation.evidence || [])
+                      .map((item) => item.jobId + '/' + item.blockId)
+                      .join('、') +
+                    ']',
+                )
+              : ['- 未找到可核对的跨论文关系。']),
+            '',
+            '## 有至少两篇论文证据的缺口',
+            ...(grounded.length
+              ? grounded.map(
+                  (gap) =>
+                    '- ' +
+                    gap.text +
+                    ' [' +
+                    gap.evidence
+                      .map((item) => item.jobId + '/' + item.blockId)
+                      .join('、') +
+                    ']' +
+                    (gap.nextStep ? '；下一步：' + gap.nextStep : ''),
+                )
+              : ['- 未找到满足两篇论文锚点要求的研究缺口。']),
+            '',
+            '## 模型归纳（需人工验证）',
+            ...(inference.length
+              ? inference.map(
+                  (gap) =>
+                    '- ' +
+                    gap.text +
+                    (gap.nextStep ? '；可验证方式：' + gap.nextStep : '') +
+                    '；查新：' +
+                    (gap.noveltyCheck === 'not-run' ? '未查新' : gap.noveltyCheck),
+                )
+              : ['- 无。']),
+          ].join('\n')
+          comparisonStore.addArtifact({
+            id: 'gaps',
+            type: 'summary',
+            title: '研究缺口',
+            payload: { text },
+          })
+          setNotice('研究缺口已整理：有证据 ' + grounded.length + ' 条，模型归纳 ' + inference.length + ' 条。')
           return
         }
         if (kind === 'summary') {
@@ -8560,6 +9245,8 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
           const payload = await postApi('compare/ask', {
             jobIds: state.jobIds,
             mode: state.mode,
+            surveyMode: state.surveyMode,
+            preflight: state.mode === 'survey' ? state.preflight : null,
             question,
             history,
             ...(state.mode === 'citation' && state.citing ? { citing: state.citing } : {}),
@@ -8578,6 +9265,14 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
           const answer = String(payload.answer || '').trim()
           comparisonStore.appendMessage({ role: 'assistant', content: answer, at: new Date().toISOString() })
           comparisonStore.patch({ chatState: 'idle' })
+          if (answer) {
+            void postApi('knowledge/qa', {
+              jobIds: state.jobIds,
+              mode: state.mode,
+              question,
+              answer,
+            }).catch(() => {})
+          }
           if (pendingNotes.length > 0) annotationStore.markSent(pendingNotes.map((item) => item.id))
           return answer
         } catch (cause) {
@@ -8650,6 +9345,60 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
               ),
             ),
           ),
+          state.mode === 'survey' && state.preflight
+            ? React.createElement(
+                'div',
+                {
+                  className:
+                    'dpr-cmpSurveyBrief' +
+                    (state.preflight.status === 'limited'
+                      ? ' is-limited'
+                      : state.preflight.status === 'not-recommended'
+                        ? ' is-not-recommended'
+                        : ''),
+                  role: 'status',
+                },
+                React.createElement(
+                  'div',
+                  { className: 'dpr-cmpSurveyBriefMain' },
+                  React.createElement(
+                    'strong',
+                    null,
+                    state.preflight.label +
+                      ' · ' +
+                      state.preflight.statusLabel +
+                      ' · 共同词 ' +
+                      (state.preflight.sharedTerms.length
+                        ? state.preflight.sharedTerms.join('、')
+                        : '未检出'),
+                  ),
+                  React.createElement(
+                    'span',
+                    null,
+                    [...(state.preflight.reasons || []), ...(state.preflight.warnings || [])]
+                      .slice(0, 2)
+                      .join('；'),
+                  ),
+                ),
+                state.preflight.status === 'not-recommended'
+                  ? React.createElement(
+                      'div',
+                      { className: 'dpr-cmpSurveyBriefActions' },
+                      React.createElement(
+                        'button',
+                        {
+                          type: 'button',
+                          onClick: async () => {
+                            comparisonStore.patch({ forceCompare: true })
+                            await ensureTable({ forceCompare: true })
+                          },
+                        },
+                        '仍然尝试对照',
+                      ),
+                    )
+                  : null,
+              )
+            : null,
           state.mode === 'citation' && state.citing
             ? React.createElement(
                 'div',
@@ -9074,6 +9823,1379 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
       )
     }
 
+    function libraryStatusLabel(status) {
+      return (
+        {
+          imported: '待转义',
+          queued: '已排队',
+          converting: '正在转义',
+          ready: '可阅读',
+          failed: '转义失败',
+          missing: '文件缺失',
+        }[status] || '未知状态'
+      )
+    }
+
+    function formatLibraryDate(value) {
+      const date = new Date(value)
+      if (!Number.isFinite(date.getTime())) return ''
+      return new Intl.DateTimeFormat('zh-CN', {
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      }).format(date)
+    }
+
+    /**
+     * 文档管理页：轻量入库、按需转义、批量操作与可恢复回收站。
+     * 所有修改都走宿主 API；不读取或拼接本地绝对路径。
+     */
+    function LibraryBody(props) {
+      const { useState, useEffect, useRef } = React
+      const actions = props.useTabInfo().tab.actions
+      const t = props.t
+      const inputRef = useRef(null)
+      const [data, setData] = useState({ items: [], groups: [], trash: [], totals: {} })
+      const [query, setQuery] = useState('')
+      const [filter, setFilter] = useState('all')
+      const [sort, setSort] = useState('updated')
+      const [view, setView] = useState('library')
+      const [selected, setSelected] = useState([])
+      const [busy, setBusy] = useState('')
+      const [dragging, setDragging] = useState(false)
+      const [notice, setNotice] = useState('')
+      const [error, setError] = useState('')
+
+      const load = async () => {
+        try {
+          const response = await fetch(apiUrl('library?view=manage'), { cache: 'no-store' })
+          const payload = await response.json().catch(() => ({}))
+          if (!response.ok) throw new Error(payload.error || response.statusText)
+          setData({
+            items: Array.isArray(payload.items) ? payload.items : [],
+            groups: Array.isArray(payload.groups) ? payload.groups : [],
+            trash: Array.isArray(payload.trash) ? payload.trash : [],
+            totals: payload.totals || {},
+          })
+        } catch (cause) {
+          setError(cause?.message || String(cause))
+        }
+      }
+
+      useEffect(() => {
+        void load()
+      }, [])
+
+      const activeCount = Number(data.totals.active) || 0
+      useEffect(() => {
+        if (activeCount === 0) return undefined
+        const timer = setInterval(() => void load(), 1500)
+        return () => clearInterval(timer)
+      }, [activeCount])
+
+      useEffect(() => {
+        setSelected((ids) =>
+          ids.filter((id) =>
+            (view === 'trash' ? data.trash : data.items).some((item) => item.jobId === id),
+          ),
+        )
+      }, [data, view])
+
+      const choose = () => inputRef.current?.click()
+
+      const uploadFiles = async (fileList) => {
+        const files = [...(fileList || [])]
+        if (files.length === 0) return
+        setBusy('upload')
+        setError('')
+        setNotice('')
+        let imported = 0
+        let duplicates = 0
+        const failures = []
+        for (const file of files) {
+          if (!isPdfFile(file)) {
+            failures.push(file.name + '：不是 PDF')
+            continue
+          }
+          if (Number(file.size) > MAX_UPLOAD_BYTES) {
+            failures.push(file.name + '：超过 200 MB')
+            continue
+          }
+          try {
+            const response = await fetch(apiUrl('library/import'), {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/pdf',
+                'X-DPR-Filename': encodeURIComponent(file.name || 'paper.pdf'),
+              },
+              body: file,
+            })
+            const payload = await response.json().catch(() => ({}))
+            if (!response.ok) throw new Error(payload.error || response.statusText)
+            if (payload.duplicate) duplicates += 1
+            else imported += 1
+          } catch (cause) {
+            failures.push(file.name + '：' + (cause?.message || String(cause)))
+          }
+        }
+        await load()
+        setBusy('')
+        if (inputRef.current) inputRef.current.value = ''
+        const parts = []
+        if (imported) parts.push('新入库 ' + imported + ' 篇')
+        if (duplicates) parts.push('重复文件 ' + duplicates + ' 篇')
+        if (failures.length) parts.push('失败 ' + failures.length + ' 篇')
+        setNotice(parts.join('；') || '没有可导入的 PDF。')
+        if (failures.length) setError(failures.slice(0, 5).join('；'))
+      }
+
+      const convertIds = async (jobIds) => {
+        const ids = [...new Set(jobIds || [])].filter(Boolean)
+        if (ids.length === 0 || busy) return
+        setBusy('convert')
+        setError('')
+        try {
+          const response = await fetch(apiUrl('library/convert'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ jobIds: ids }),
+          })
+          const payload = await response.json().catch(() => ({}))
+          if (!response.ok) throw new Error(payload.error || response.statusText)
+          const failed = (payload.results || []).filter((item) => item.error)
+          setNotice('已排队 ' + (ids.length - failed.length) + ' 篇文档。')
+          if (failed.length) {
+            setError(failed.map((item) => item.error).slice(0, 4).join('；'))
+          }
+          setSelected([])
+          await load()
+        } catch (cause) {
+          setError(cause?.message || String(cause))
+        } finally {
+          setBusy('')
+        }
+      }
+
+      const trashIds = async (jobIds) => {
+        const ids = [...new Set(jobIds || [])].filter(Boolean)
+        if (ids.length === 0 || busy) return
+        if (
+          !window.confirm(
+            '将 ' +
+              ids.length +
+              ' 篇文档移到回收站？原 PDF、批注、译文和术语表会一起移动，可在文档管理中恢复。',
+          )
+        ) {
+          return
+        }
+        setBusy('trash')
+        setError('')
+        try {
+          const response = await fetch(apiUrl('library/trash'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ jobIds: ids }),
+          })
+          const payload = await response.json().catch(() => ({}))
+          if (!response.ok) throw new Error(payload.error || response.statusText)
+          setNotice('已移到回收站 ' + (payload.moved || []).length + ' 篇，可随时恢复。')
+          if ((payload.failed || []).length) {
+            setError(payload.failed.map((item) => item.error).join('；'))
+          }
+          setSelected([])
+          await load()
+        } catch (cause) {
+          setError(cause?.message || String(cause))
+        } finally {
+          setBusy('')
+        }
+      }
+
+      const restoreIds = async (jobIds) => {
+        const ids = [...new Set(jobIds || [])].filter(Boolean)
+        if (ids.length === 0 || busy) return
+        setBusy('restore')
+        setError('')
+        try {
+          const response = await fetch(apiUrl('library/restore'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ jobIds: ids }),
+          })
+          const payload = await response.json().catch(() => ({}))
+          if (!response.ok) throw new Error(payload.error || response.statusText)
+          setNotice('已恢复 ' + (payload.restored || []).length + ' 篇文档。')
+          if ((payload.failed || []).length) {
+            setError(payload.failed.map((item) => item.error).join('；'))
+          }
+          setSelected([])
+          await load()
+        } catch (cause) {
+          setError(cause?.message || String(cause))
+        } finally {
+          setBusy('')
+        }
+      }
+
+      const openOrConvert = (item) => {
+        if (item.status === 'ready') {
+          actions.openTab(READER_KIND, { params: { jobId: item.jobId } })
+        } else if (item.status === 'imported' || item.status === 'failed') {
+          void convertIds([item.jobId])
+        }
+      }
+
+      const toggleSelected = (jobId) => {
+        setSelected((ids) =>
+          ids.includes(jobId) ? ids.filter((id) => id !== jobId) : [...ids, jobId],
+        )
+      }
+
+      const source = view === 'trash' ? data.trash : data.items
+      const normalizedQuery = query.trim().toLowerCase()
+      const filtered = source
+        .filter((item) => {
+          if (!normalizedQuery) return true
+          return [item.title, item.authors, item.doi, item.arxiv, item.originalName]
+            .filter(Boolean)
+            .some((value) => String(value).toLowerCase().includes(normalizedQuery))
+        })
+        .filter((item) => {
+          if (view === 'trash' || filter === 'all') return true
+          if (filter === 'active') return item.status === 'queued' || item.status === 'converting'
+          if (filter === 'failed') return item.status === 'failed' || item.status === 'missing'
+          return item.status === filter
+        })
+        .sort((left, right) => {
+          if (sort === 'title') return String(left.title).localeCompare(String(right.title), 'zh-CN')
+          if (sort === 'imported') return String(right.importedAt).localeCompare(String(left.importedAt))
+          return String(right.updatedAt).localeCompare(String(left.updatedAt))
+        })
+      const versionCounts = new Map()
+      for (const group of data.groups || []) {
+        for (const item of group.items || []) versionCounts.set(item.jobId, group.count || 1)
+      }
+      const visibleIds = filtered.map((item) => item.jobId)
+      const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.includes(id))
+
+      const filterButton = (value, label) =>
+        React.createElement(
+          'button',
+          {
+            key: value,
+            type: 'button',
+            className: 'dpr-docFilter' + (filter === value ? ' is-active' : ''),
+            'aria-pressed': filter === value,
+            onClick: () => setFilter(value),
+          },
+          label,
+        )
+
+      const row = (item) => {
+        const status = item.status || 'imported'
+        const active = status === 'queued' || status === 'converting'
+        const versionCount = versionCounts.get(item.jobId) || 1
+        const inTrash = view === 'trash'
+        return React.createElement(
+          'article',
+          {
+            key: item.jobId,
+            className: 'dpr-docRow' + (selected.includes(item.jobId) ? ' is-selected' : ''),
+            'data-job-id': item.jobId,
+            'data-status': status,
+          },
+          React.createElement('input', {
+            className: 'dpr-docCheck',
+            type: 'checkbox',
+            checked: selected.includes(item.jobId),
+            'aria-label': (selected.includes(item.jobId) ? '取消选择 ' : '选择 ') + item.title,
+            onChange: () => toggleSelected(item.jobId),
+          }),
+          React.createElement(
+            'div',
+            { className: 'dpr-docMain' },
+            React.createElement(
+              'div',
+              { className: 'dpr-docTitleLine' },
+              React.createElement(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dpr-docTitleButton',
+                  onClick: () => (inTrash ? undefined : openOrConvert(item)),
+                  disabled: inTrash,
+                  title: inTrash ? item.title : status === 'ready' ? '打开阅读页' : '开始转义',
+                },
+                item.title || item.originalName || item.jobId,
+              ),
+              React.createElement(
+                'span',
+                {
+                  className:
+                    'dpr-docBadge' +
+                    (status === 'ready'
+                      ? ' is-ready'
+                      : status === 'failed' || status === 'missing'
+                        ? ' is-failed'
+                        : active
+                          ? ' is-active'
+                          : ''),
+                },
+                libraryStatusLabel(status),
+              ),
+              versionCount > 1
+                ? React.createElement(
+                    'span',
+                    { className: 'dpr-docBadge' },
+                    '版本组 ' + versionCount,
+                  )
+                : null,
+            ),
+            React.createElement(
+              'div',
+              { className: 'dpr-docMeta' },
+              item.authors ? React.createElement('span', null, item.authors) : null,
+              item.doi ? React.createElement('span', null, 'DOI ' + item.doi) : null,
+              item.arxiv ? React.createElement('span', null, 'arXiv ' + item.arxiv) : null,
+              React.createElement(
+                'span',
+                null,
+                (Number(item.annotationCount) || 0) + ' 条批注',
+              ),
+              Number(item.bytes) > 0 ? React.createElement('span', null, formatBytes(item.bytes)) : null,
+              React.createElement(
+                'span',
+                null,
+                inTrash
+                  ? '移入 ' + formatLibraryDate(item.trashedAt)
+                  : '更新 ' + formatLibraryDate(item.updatedAt),
+              ),
+            ),
+            item.message && status !== 'ready'
+              ? React.createElement('div', { className: 'dpr-docMeta' }, item.message)
+              : null,
+            item.error
+              ? React.createElement('div', { className: 'dpr-docError', role: 'status' }, item.error)
+              : null,
+          ),
+          React.createElement(
+            'div',
+            { className: 'dpr-docActions' },
+            inTrash
+              ? React.createElement(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'dpr-docRowAction',
+                    disabled: Boolean(busy),
+                    onClick: () => void restoreIds([item.jobId]),
+                  },
+                  '恢复',
+                )
+              : React.createElement(
+                  React.Fragment,
+                  null,
+                  status === 'ready'
+                    ? React.createElement(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'dpr-docRowAction',
+                          onClick: () => openOrConvert(item),
+                        },
+                        '打开阅读',
+                      )
+                    : React.createElement(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'dpr-docRowAction',
+                          disabled: active || Boolean(busy) || status === 'missing',
+                          onClick: () => void convertIds([item.jobId]),
+                        },
+                        status === 'failed' ? '重试转义' : active ? '处理中' : '开始转义',
+                      ),
+                  React.createElement(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'dpr-docDanger',
+                      disabled: active || Boolean(busy),
+                      onClick: () => void trashIds([item.jobId]),
+                    },
+                    '移到回收站',
+                  ),
+                ),
+          ),
+        )
+      }
+
+      return React.createElement(
+        'div',
+        { className: 'dpr-pane dpr-docPane' },
+        React.createElement(
+          'div',
+          { className: 'dpr-docShell' },
+          React.createElement(
+            'div',
+            { className: 'dpr-docTopbar' },
+            React.createElement(
+              'button',
+              {
+                type: 'button',
+                className: 'dpr-docSecondary',
+                onClick: () => actions.openTab(HOME_KIND, { replaceTab: true }),
+              },
+              '← 返回主界面',
+            ),
+            React.createElement('div', { className: 'dpr-docTopbarTitle' }, '文档管理'),
+            React.createElement(
+              'span',
+              { className: 'dpr-docTopbarMeta' },
+              data.totals.total || 0,
+              ' 篇 · ',
+              data.totals.ready || 0,
+              ' 篇可读',
+            ),
+            React.createElement(
+              'button',
+              {
+                type: 'button',
+                className: 'dpr-docSecondary',
+                onClick: () => void load(),
+                disabled: Boolean(busy),
+              },
+              '刷新',
+            ),
+            React.createElement(
+              'button',
+              { type: 'button', className: 'dpr-docPrimary', onClick: choose, disabled: Boolean(busy) },
+              busy === 'upload' ? '正在导入…' : '导入 PDF',
+            ),
+          ),
+          React.createElement(
+            'section',
+            { className: 'dpr-docHero' },
+            React.createElement(
+              'div',
+              null,
+              React.createElement('h2', null, '论文文档库'),
+              React.createElement(
+                'p',
+                null,
+                '先把 PDF 轻量收进本地文档库；点击文档时才启用转义。重复文件不会重复占用空间，不同版本会并列保留。',
+              ),
+            ),
+            React.createElement('img', {
+              className: 'dpr-docHeroArt',
+              src: MASCOT_ASSETS.stackBooks,
+              alt: '',
+              'aria-hidden': true,
+            }),
+          ),
+          React.createElement(
+            'div',
+            { className: 'dpr-docImportStrip' },
+            React.createElement('input', {
+              ref: inputRef,
+              className: 'dpr-fileInput',
+              type: 'file',
+              accept: 'application/pdf,.pdf',
+              multiple: true,
+              'aria-label': '选择多个 PDF 文件',
+              onChange: (event) => void uploadFiles(event.target?.files),
+            }),
+            React.createElement(
+              'div',
+              {
+                className: 'dpr-docDrop dpr-drop' + (dragging ? ' is-over' : ''),
+                role: 'button',
+                tabIndex: 0,
+                onClick: choose,
+                onKeyDown: (event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    choose()
+                  }
+                },
+                onDragOver: (event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  setDragging(true)
+                },
+                onDragLeave: (event) => {
+                  event.stopPropagation()
+                  setDragging(false)
+                },
+                onDrop: (event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  setDragging(false)
+                  void uploadFiles(event.dataTransfer?.files)
+                },
+              },
+              React.createElement('b', null, '批量拖入 PDF'),
+              React.createElement(
+                'span',
+                null,
+                '导入只负责入库，不会自动启动全部转义。也可点击这里选择多个文件。',
+              ),
+            ),
+            React.createElement(
+              'button',
+              {
+                type: 'button',
+                className: 'dpr-docPrimary',
+                onClick: choose,
+                disabled: Boolean(busy),
+              },
+              busy === 'upload' ? '正在逐个导入…' : '选择多个 PDF',
+            ),
+          ),
+          React.createElement(
+            'div',
+            { className: 'dpr-docStats' },
+            [
+              ['总文档', data.totals.total || 0],
+              ['待转义', data.totals.imported || 0],
+              ['处理中', data.totals.active || 0],
+              ['可阅读', data.totals.ready || 0],
+              ['失败/缺失', (Number(data.totals.failed) || 0) + (Number(data.totals.missing) || 0)],
+            ].map(([label, value]) =>
+              React.createElement(
+                'div',
+                { className: 'dpr-docStat', key: label },
+                React.createElement('b', null, value),
+                React.createElement('span', null, label),
+              ),
+            ),
+          ),
+          notice
+            ? React.createElement(
+                'div',
+                { className: 'dpr-docNotice', role: 'status', 'aria-live': 'polite' },
+                notice,
+              )
+            : null,
+          error
+            ? React.createElement(
+                'div',
+                { className: 'dpr-docNotice is-error', role: 'alert' },
+                error,
+              )
+            : null,
+          React.createElement(
+            'div',
+            { className: 'dpr-docControls' },
+            React.createElement('input', {
+              className: 'dpr-docSearch',
+              type: 'search',
+              value: query,
+              placeholder: '搜索标题、作者、DOI、arXiv 或文件名',
+              'aria-label': '搜索文档',
+              onChange: (event) => setQuery(event.target.value),
+            }),
+            React.createElement(
+              'select',
+              {
+                className: 'dpr-docSort',
+                value: sort,
+                'aria-label': '文档排序',
+                onChange: (event) => setSort(event.target.value),
+              },
+              React.createElement('option', { value: 'updated' }, '最近更新'),
+              React.createElement('option', { value: 'imported' }, '最近导入'),
+              React.createElement('option', { value: 'title' }, '按标题'),
+            ),
+            React.createElement(
+              'button',
+              {
+                type: 'button',
+                className: 'dpr-docViewBtn',
+                onClick: () => {
+                  setView(view === 'trash' ? 'library' : 'trash')
+                  setFilter('all')
+                  setSelected([])
+                },
+              },
+              view === 'trash' ? '返回文档库' : '回收站 (' + data.trash.length + ')',
+            ),
+          ),
+          view === 'library'
+            ? React.createElement(
+                'div',
+                { className: 'dpr-docFilters', role: 'group', 'aria-label': '按状态筛选' },
+                filterButton('all', '全部'),
+                filterButton('imported', '待转义'),
+                filterButton('active', '处理中'),
+                filterButton('ready', '可阅读'),
+                filterButton('failed', '失败/缺失'),
+              )
+            : React.createElement(
+                'div',
+                { className: 'dpr-docTrashHint' },
+                '回收站中的文档不会出现在主页、综述选文和版本识别里。恢复后会回到原位置，已有批注与产物随目录一起恢复。',
+              ),
+          selected.length > 0
+            ? React.createElement(
+                'div',
+                { className: 'dpr-docBulk', role: 'status', 'aria-live': 'polite' },
+                React.createElement('strong', null, '已选择 ' + selected.length + ' 篇'),
+                view === 'trash'
+                  ? React.createElement(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'dpr-docPrimary',
+                        disabled: Boolean(busy),
+                        onClick: () => void restoreIds(selected),
+                      },
+                      '批量恢复',
+                    )
+                  : React.createElement(
+                      React.Fragment,
+                      null,
+                      React.createElement(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'dpr-docPrimary',
+                          disabled: Boolean(busy),
+                          onClick: () => void convertIds(selected),
+                        },
+                        '批量转义',
+                      ),
+                      React.createElement(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'dpr-docDanger',
+                          disabled: Boolean(busy),
+                          onClick: () => void trashIds(selected),
+                        },
+                        '移到回收站',
+                      ),
+                    ),
+                React.createElement(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'dpr-docSecondary',
+                    onClick: () => setSelected([]),
+                  },
+                  '取消选择',
+                ),
+              )
+            : null,
+          React.createElement(
+            'div',
+            { className: 'dpr-docControls' },
+            React.createElement(
+              'button',
+              {
+                type: 'button',
+                className: 'dpr-docSecondary',
+                disabled: visibleIds.length === 0,
+                onClick: () =>
+                  setSelected((ids) => {
+                    if (allVisibleSelected) return ids.filter((id) => !visibleIds.includes(id))
+                    return [...new Set([...ids, ...visibleIds])]
+                  }),
+              },
+              allVisibleSelected ? '取消全选当前' : '选择当前全部',
+            ),
+            React.createElement(
+              'span',
+              { className: 'dpr-docTopbarMeta' },
+              '当前显示 ' + filtered.length + ' / ' + source.length + ' 篇',
+            ),
+          ),
+          filtered.length === 0
+            ? React.createElement(
+                'div',
+                { className: 'dpr-docEmpty' },
+                React.createElement('img', {
+                  src: MASCOT_ASSETS.stackBooks,
+                  alt: '',
+                  'aria-hidden': true,
+                }),
+                React.createElement(
+                  'h3',
+                  null,
+                  view === 'trash'
+                    ? '回收站是空的'
+                    : source.length === 0
+                      ? '文档库还是空的'
+                      : '当前筛选没有结果',
+                ),
+                React.createElement(
+                  'p',
+                  null,
+                  view === 'trash'
+                    ? '移到回收站的文档会出现在这里。'
+                    : source.length === 0
+                      ? '先批量导入 PDF。导入后只会入库，点击某篇文档时才开始转义。'
+                      : '调整搜索词或状态筛选即可。',
+                ),
+                view === 'library' && source.length === 0
+                  ? React.createElement(
+                      'button',
+                      { type: 'button', className: 'dpr-docPrimary', onClick: choose },
+                      '导入第一批 PDF',
+                    )
+                  : null,
+              )
+            : React.createElement(
+                'div',
+                { className: 'dpr-docList', role: 'list', 'aria-label': '文档列表' },
+                filtered.map(row),
+              ),
+        ),
+      )
+    }
+
+    /**
+     * P3 知识中心：跨论文检索、证据问答、引用图谱、导出与阅读档案。
+     */
+    function KnowledgeBody(props) {
+      const { useState, useEffect } = React
+      const actions = props.useTabInfo().tab.actions
+      const [status, setStatus] = useState(null)
+      const [profile, setProfile] = useState(null)
+      const [query, setQuery] = useState('')
+      const [sourceType, setSourceType] = useState('all')
+      const [search, setSearch] = useState(null)
+      const [selectedJobId, setSelectedJobId] = useState('')
+      const [graph, setGraph] = useState(null)
+      const [answer, setAnswer] = useState('')
+      const [busy, setBusy] = useState('')
+      const [notice, setNotice] = useState('')
+      const [error, setError] = useState('')
+
+      const loadOverview = async () => {
+        try {
+          const [statusResponse, profileResponse] = await Promise.all([
+            fetch(apiUrl('knowledge'), { cache: 'no-store' }),
+            fetch(apiUrl('knowledge/profile'), { cache: 'no-store' }),
+          ])
+          const statusPayload = await statusResponse.json().catch(() => ({}))
+          const profilePayload = await profileResponse.json().catch(() => ({}))
+          if (!statusResponse.ok) throw new Error(statusPayload.error || statusResponse.statusText)
+          if (!profileResponse.ok) throw new Error(profilePayload.error || profileResponse.statusText)
+          setStatus(statusPayload)
+          setProfile(profilePayload)
+          setSelectedJobId((current) => current || profilePayload.papers?.[0]?.jobId || '')
+        } catch (cause) {
+          setError(cause?.message || String(cause))
+        }
+      }
+
+      useEffect(() => {
+        void loadOverview()
+      }, [])
+
+      useEffect(() => {
+        if (!selectedJobId) {
+          setGraph(null)
+          return undefined
+        }
+        let alive = true
+        fetch(apiUrl('jobs/' + selectedJobId + '/citation-graph'), { cache: 'no-store' })
+          .then(async (response) => {
+            const payload = await response.json().catch(() => ({}))
+            if (!response.ok) throw new Error(payload.error || response.statusText)
+            if (alive) setGraph(payload)
+          })
+          .catch((cause) => {
+            if (alive) setError(cause?.message || String(cause))
+          })
+        return () => {
+          alive = false
+        }
+      }, [selectedJobId])
+
+      const runSearch = async (answerQuestion = false) => {
+        const question = query.trim()
+        if (!question || busy) return
+        setBusy(answerQuestion ? 'answer' : 'search')
+        setError('')
+        setNotice('')
+        try {
+          if (answerQuestion) {
+            const payload = await postApi('knowledge/answer', {
+              question,
+              sourceTypes: sourceType === 'all' ? undefined : [sourceType],
+            })
+            setAnswer(payload.answer || '')
+            setSearch({
+              query: question,
+              results: payload.sources || [],
+              groups: groupKnowledgeResultsClient(payload.sources || []),
+              facets: status?.stats || null,
+            })
+            setNotice('已生成证据型回答；来源列表可回到原文。')
+          } else {
+            const payload = await postApi('knowledge/search', {
+              query: question,
+              sourceTypes: sourceType === 'all' ? undefined : [sourceType],
+              limit: 40,
+            })
+            setSearch(payload)
+            setAnswer('')
+            setNotice(
+              '找到 ' +
+                (payload.results?.length || 0) +
+                ' 条结果，共 ' +
+                (payload.groups?.length || 0) +
+                ' 篇论文。',
+            )
+          }
+        } catch (cause) {
+          setError(cause?.message || String(cause))
+        } finally {
+          setBusy('')
+        }
+      }
+
+      const openResult = (item) => {
+        if (!item?.jobId) return
+        actions.openTab(READER_KIND, {
+          params: {
+            jobId: item.jobId,
+            ...(item.blockId ? { blockId: item.blockId } : {}),
+          },
+        })
+      }
+
+      const exportFile = async (kind) => {
+        if (!selectedJobId || busy) return
+        setBusy('export')
+        setError('')
+        try {
+          const response = await fetch(
+            apiUrl('jobs/' + selectedJobId + '/export?kind=' + encodeURIComponent(kind)),
+            { cache: 'no-store' },
+          )
+          if (!response.ok) {
+            const payload = await response.json().catch(() => ({}))
+            throw new Error(payload.error || response.statusText)
+          }
+          const blob = await response.blob()
+          const disposition = response.headers.get('content-disposition') || ''
+          const filename =
+            disposition.match(/filename="([^"]+)"/)?.[1] ||
+            'knowledge-export.' + (kind.endsWith('json') ? 'json' : kind.endsWith('csv') ? 'csv' : 'md')
+          const href = URL.createObjectURL(blob)
+          const anchor = document.createElement('a')
+          anchor.href = href
+          anchor.download = filename
+          anchor.click()
+          URL.revokeObjectURL(href)
+          let warnings = []
+          try {
+            warnings = JSON.parse(decodeURIComponent(response.headers.get('x-dpr-warnings') || '[]'))
+          } catch {
+            warnings = []
+          }
+          setNotice(
+            '已导出 ' +
+              filename +
+              (warnings.length ? '，有 ' + warnings.length + ' 条字段完整性告警。' : '。'),
+          )
+          if (warnings.length) setError(warnings.join('；'))
+        } catch (cause) {
+          setError(cause?.message || String(cause))
+        } finally {
+          setBusy('')
+        }
+      }
+
+      const rebuildIndex = async () => {
+        if (busy) return
+        setBusy('rebuild')
+        setError('')
+        try {
+          const payload = await postApi('knowledge/rebuild', {})
+          setStatus(payload)
+          setNotice('知识索引已重建：' + (payload.stats?.total || 0) + ' 条。')
+        } catch (cause) {
+          setError(cause?.message || String(cause))
+        } finally {
+          setBusy('')
+        }
+      }
+
+      const filterOptions = [
+        ['all', '全部'],
+        ['text', '正文'],
+        ['annotation', '批注'],
+        ['translation', '译文'],
+        ['term', '术语'],
+        ['citation', '引用'],
+        ['qa', '问答'],
+        ['report', '报告'],
+      ]
+      const papers = profile?.papers || []
+      const groups = search?.groups || []
+      const graphNodes = Array.isArray(graph?.nodes) ? graph.nodes.slice(0, 12) : []
+      const graphWidth = 620
+      const graphHeight = 340
+      const centerX = graphWidth / 2
+      const centerY = graphHeight / 2
+      const peripheral = graphNodes.filter((node) => node.type !== 'center')
+      const positions = new Map()
+      const outgoing = peripheral.filter((node) => node.type === 'outgoing')
+      const incoming = peripheral.filter((node) => node.type === 'incoming')
+      const placeNodes = (items, leftSide) => {
+        const count = Math.max(1, items.length)
+        for (const [index, node] of items.entries()) {
+          const angle = Math.PI * ((index + 1) / (count + 1))
+          const x = leftSide
+            ? centerX - 210 * Math.cos(angle)
+            : centerX + 210 * Math.cos(angle)
+          const y = centerY - Math.sin(angle) * (leftSide ? 105 : 105)
+          positions.set(node.id, { x, y })
+        }
+      }
+      placeNodes(outgoing, true)
+      placeNodes(incoming, false)
+      positions.set('job:' + selectedJobId, { x: centerX, y: centerY })
+
+      return React.createElement(
+        'div',
+        { className: 'dpr-pane dpr-knowledgePane' },
+        React.createElement(
+          'div',
+          { className: 'dpr-knowledgeShell' },
+          React.createElement(
+            'div',
+            { className: 'dpr-docTopbar' },
+            React.createElement(
+              'button',
+              {
+                type: 'button',
+                className: 'dpr-docSecondary',
+                onClick: () => actions.openTab(HOME_KIND, { replaceTab: true }),
+              },
+              '← 返回主界面',
+            ),
+            React.createElement('div', { className: 'dpr-docTopbarTitle' }, '知识中心'),
+            React.createElement(
+              'span',
+              { className: 'dpr-docTopbarMeta' },
+              (status?.stats?.total || 0) + ' 条索引 · ' + papers.length + ' 篇文档',
+            ),
+            React.createElement(
+              'button',
+              {
+                type: 'button',
+                className: 'dpr-docSecondary',
+                disabled: Boolean(busy),
+                onClick: () => void loadOverview(),
+              },
+              '刷新',
+            ),
+            React.createElement(
+              'button',
+              {
+                type: 'button',
+                className: 'dpr-docPrimary',
+                disabled: Boolean(busy),
+                onClick: () => void rebuildIndex(),
+              },
+              busy === 'rebuild' ? '重建中…' : '重建索引',
+            ),
+          ),
+          React.createElement(
+            'section',
+            { className: 'dpr-knowledgeHero' },
+            React.createElement(
+              'div',
+              null,
+              React.createElement('h2', null, '跨论文知识检索'),
+              React.createElement(
+                'p',
+                null,
+                '在正文、批注、译文、术语、引用和综述报告中统一检索；每条结果都保留 jobId 与 blockId，可以直接回到原文。',
+              ),
+            ),
+            React.createElement('img', {
+              src: MASCOT_ASSETS.lookupDetective,
+              alt: '',
+              'aria-hidden': true,
+            }),
+          ),
+          React.createElement(
+            'div',
+            { className: 'dpr-knowledgeStats' },
+            [
+              ['索引条目', status?.stats?.total || 0],
+              ['覆盖论文', status?.stats?.papers || 0],
+              ['累计阅读', formatDuration(profile?.totalReadingSeconds || 0)],
+              ['待处理', (profile?.pendingAnnotations || 0) + (profile?.reviewPending || 0)],
+            ].map(([label, value]) =>
+              React.createElement(
+                'div',
+                { className: 'dpr-knowledgeStat', key: label },
+                React.createElement('b', null, value),
+                React.createElement('span', null, label),
+              ),
+            ),
+          ),
+          notice
+            ? React.createElement(
+                'div',
+                { className: 'dpr-docNotice', role: 'status', 'aria-live': 'polite' },
+                notice,
+              )
+            : null,
+          error
+            ? React.createElement('div', { className: 'dpr-docNotice is-error', role: 'alert' }, error)
+            : null,
+          React.createElement(
+            'div',
+            { className: 'dpr-knowledgeGrid' },
+            React.createElement(
+              'div',
+              { className: 'dpr-knowledgePanel' },
+              React.createElement(
+                'div',
+                { className: 'dpr-knowledgePanelHead' },
+                React.createElement('h3', null, '跨论文检索'),
+                React.createElement(
+                  'span',
+                  null,
+                  status?.generatedAt ? '索引更新 ' + formatLibraryDate(status.generatedAt) : '尚未建索引',
+                ),
+              ),
+              React.createElement(
+                'div',
+                { className: 'dpr-knowledgeSearchRow' },
+                React.createElement('input', {
+                  className: 'dpr-knowledgeSearch',
+                  value: query,
+                  placeholder: '搜索术语、方法、实验条件、批注或引用标题',
+                  'aria-label': '跨论文知识搜索',
+                  onChange: (event) => setQuery(event.target.value),
+                  onKeyDown: (event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      void runSearch(false)
+                    }
+                  },
+                }),
+                React.createElement(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'dpr-knowledgeBtn is-primary',
+                    disabled: Boolean(busy) || !query.trim(),
+                    onClick: () => void runSearch(false),
+                  },
+                  busy === 'search' ? '检索中…' : '检索',
+                ),
+                React.createElement(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'dpr-knowledgeBtn',
+                    disabled: Boolean(busy) || !query.trim(),
+                    onClick: () => void runSearch(true),
+                  },
+                  busy === 'answer' ? '整理中…' : '证据问答',
+                ),
+              ),
+              React.createElement(
+                'div',
+                { className: 'dpr-knowledgeFilters', role: 'group', 'aria-label': '知识来源筛选' },
+                filterOptions.map(([value, label]) =>
+                  React.createElement(
+                    'button',
+                    {
+                      key: value,
+                      type: 'button',
+                      className: 'dpr-knowledgeFilter' + (sourceType === value ? ' is-active' : ''),
+                      'aria-pressed': sourceType === value,
+                      onClick: () => setSourceType(value),
+                    },
+                    label,
+                  ),
+                ),
+              ),
+              answer
+                ? React.createElement(
+                    'div',
+                    { className: 'dpr-knowledgeAnswer', role: 'status' },
+                    renderMarkdown(answer),
+                  )
+                : null,
+              React.createElement(
+                'div',
+                { className: 'dpr-knowledgeResults' },
+                groups.length === 0
+                  ? React.createElement(
+                      'p',
+                      { className: 'dpr-compareHint' },
+                      query ? '还没有检索结果。' : '输入问题或关键词后开始检索。',
+                    )
+                  : groups.map((group) =>
+                      React.createElement(
+                        'section',
+                        { className: 'dpr-knowledgePaperGroup', key: group.jobId },
+                        React.createElement('div', { className: 'dpr-knowledgePaperTitle' }, group.title),
+                        React.createElement(
+                          'div',
+                          { className: 'dpr-knowledgePaperMeta' },
+                          [group.authors, group.doi, group.arxiv ? 'arXiv ' + group.arxiv : '']
+                            .filter(Boolean)
+                            .join(' · '),
+                        ),
+                        group.items.map((item) =>
+                          React.createElement(
+                            'button',
+                            {
+                              key: item.id,
+                              type: 'button',
+                              className: 'dpr-knowledgeResult',
+                              onClick: () => openResult(item),
+                            },
+                            React.createElement(
+                              'span',
+                              { className: 'dpr-knowledgeResultMain' },
+                              React.createElement(
+                                'span',
+                                { className: 'dpr-knowledgeResultTop' },
+                                React.createElement(
+                                  'span',
+                                  { className: 'dpr-knowledgeType' },
+                                  item.sourceLabel || item.sourceType,
+                                ),
+                                item.blockId
+                                  ? React.createElement(
+                                      'span',
+                                      { className: 'dpr-knowledgePath' },
+                                      (item.section || '正文') +
+                                        (item.page ? ' · p.' + item.page : '') +
+                                        ' · ' +
+                                        item.blockId,
+                                    )
+                                  : null,
+                              ),
+                              React.createElement(
+                                'span',
+                                { className: 'dpr-knowledgeSnippet' },
+                                item.snippet || item.text,
+                              ),
+                            ),
+                            React.createElement(
+                              'span',
+                              { className: 'dpr-knowledgeScore' },
+                              Math.round(Number(item.score) || 0),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+              ),
+            ),
+            React.createElement(
+              'div',
+              { style: { display: 'grid', gap: '12px' } },
+              React.createElement(
+                'section',
+                { className: 'dpr-knowledgePanel' },
+                React.createElement(
+                  'div',
+                  { className: 'dpr-knowledgePanelHead' },
+                  React.createElement('h3', null, '引用图谱'),
+                  React.createElement('span', null, '本地引用与已知施引'),
+                ),
+                React.createElement(
+                  'select',
+                  {
+                    className: 'dpr-knowledgeSelect',
+                    value: selectedJobId,
+                    'aria-label': '选择引用图谱中心论文',
+                    onChange: (event) => setSelectedJobId(event.target.value),
+                  },
+                  papers.map((paper) =>
+                    React.createElement(
+                      'option',
+                      { key: paper.jobId, value: paper.jobId },
+                      paper.title,
+                    ),
+                  ),
+                ),
+                graph
+                  ? React.createElement(
+                      React.Fragment,
+                      null,
+                      React.createElement(
+                        'svg',
+                        {
+                          className: 'dpr-knowledgeGraph',
+                          viewBox: '0 0 ' + graphWidth + ' ' + graphHeight,
+                          role: 'img',
+                          'aria-label': '当前论文引用关系图',
+                        },
+                        graph.edges.slice(0, 24).map((edge) =>
+                          positions.get(edge.from) && positions.get(edge.to)
+                            ? React.createElement('line', {
+                                key: edge.id,
+                                className:
+                                  'dpr-knowledgeGraphEdge' + (edge.grounded ? '' : ' is-unanchored'),
+                                x1: positions.get(edge.from).x,
+                                y1: positions.get(edge.from).y,
+                                x2: positions.get(edge.to).x,
+                                y2: positions.get(edge.to).y,
+                              })
+                            : null,
+                        ),
+                        graphNodes.map((node) => {
+                          const position = positions.get(node.id)
+                          if (!position) return null
+                          return React.createElement(
+                            'g',
+                            {
+                              key: node.id,
+                              className:
+                                'dpr-knowledgeGraphNode' +
+                                (node.type === 'center'
+                                  ? ' is-center'
+                                  : node.type === 'incoming'
+                                    ? ' is-incoming'
+                                    : ''),
+                              transform: 'translate(' + position.x + ' ' + position.y + ')',
+                              onClick: () => node.localJobId && openResult({ jobId: node.localJobId }),
+                            },
+                            React.createElement('circle', { r: node.type === 'center' ? 27 : 20 }),
+                            React.createElement(
+                              'title',
+                              null,
+                              (node.title || node.localJobId || node.id) +
+                                ' · OA 状态：' +
+                                (node.oaStatus === 'local' ? '本地已读' : '未核验'),
+                            ),
+                            React.createElement(
+                              'text',
+                              {
+                                x: 0,
+                                y: node.type === 'center' ? 3 : 31,
+                                textAnchor: 'middle',
+                              },
+                              String(node.title || '').slice(0, 24),
+                            ),
+                          )
+                        }),
+                      ),
+                      React.createElement(
+                        'div',
+                        { className: 'dpr-knowledgeGraphLegend' },
+                        React.createElement('span', null, '出边 ' + graph.coverage.outgoing),
+                        React.createElement('span', null, '本地出边 ' + graph.coverage.outgoingLocal),
+                        React.createElement('span', null, '本地施引论文 ' + graph.coverage.incomingLocal),
+                        React.createElement(
+                          'span',
+                          null,
+                          '本地引用边 ' + (graph.coverage.incomingLocalReferences || 0),
+                        ),
+                        React.createElement('span', null, '外部施引：尚未做全库检索'),
+                        React.createElement('span', null, '外部 OA：未核验'),
+                      ),
+                      graph.warnings?.length
+                        ? React.createElement(
+                            'div',
+                            { className: 'dpr-docTrashHint' },
+                            graph.warnings.join('；'),
+                          )
+                        : null,
+                    )
+                  : React.createElement('p', { className: 'dpr-compareHint' }, '选择论文后加载引用图谱。'),
+              ),
+              React.createElement(
+                'section',
+                { className: 'dpr-knowledgePanel' },
+                React.createElement('div', { className: 'dpr-knowledgePanelHead' }, React.createElement('h3', null, '导出')),
+                React.createElement(
+                  'div',
+                  { className: 'dpr-knowledgeActions' },
+                  React.createElement(
+                    'button',
+                    { type: 'button', disabled: !selectedJobId || Boolean(busy), onClick: () => void exportFile('annotations-md') },
+                    '批注 Markdown',
+                  ),
+                  React.createElement(
+                    'button',
+                    { type: 'button', disabled: !selectedJobId || Boolean(busy), onClick: () => void exportFile('annotations-json') },
+                    '批注 JSON',
+                  ),
+                  React.createElement(
+                    'button',
+                    { type: 'button', disabled: !selectedJobId || Boolean(busy), onClick: () => void exportFile('glossary-csv') },
+                    '术语 CSV',
+                  ),
+                  React.createElement(
+                    'button',
+                    { type: 'button', disabled: !selectedJobId || Boolean(busy), onClick: () => void exportFile('citations-md') },
+                    '引用汇总',
+                  ),
+                ),
+              ),
+              React.createElement(
+                'section',
+                { className: 'dpr-knowledgePanel' },
+                React.createElement(
+                  'div',
+                  { className: 'dpr-knowledgePanelHead' },
+                  React.createElement('h3', null, '阅读档案'),
+                  React.createElement('span', null, (profile?.papersRead || 0) + ' 篇有阅读记录'),
+                ),
+                (profile?.nextActions || []).length === 0
+                  ? React.createElement('p', { className: 'dpr-compareHint' }, '当前没有待处理批注或复核问题。')
+                  : React.createElement(
+                      'ul',
+                      { className: 'dpr-knowledgeNext' },
+                      profile.nextActions.map((action, index) =>
+                        React.createElement(
+                          'li',
+                          { key: action.type + action.jobId + index },
+                          React.createElement(
+                            'button',
+                            { type: 'button', onClick: () => openResult({ jobId: action.jobId }) },
+                            action.text + ' · ' + action.title,
+                          ),
+                        ),
+                      ),
+                    ),
+              ),
+            ),
+          ),
+        ),
+      )
+    }
+
+    function groupKnowledgeResultsClient(items) {
+      const groups = new Map()
+      for (const item of Array.isArray(items) ? items : []) {
+        if (!groups.has(item.jobId)) {
+          groups.set(item.jobId, {
+            jobId: item.jobId,
+            title: item.paperTitle || item.jobId,
+            authors: item.authors || '',
+            doi: item.doi || '',
+            arxiv: item.arxiv || '',
+            score: 0,
+            items: [],
+          })
+        }
+        const group = groups.get(item.jobId)
+        group.score += Number(item.score) || 0
+        group.items.push(item)
+      }
+      return [...groups.values()]
+    }
+
     /**
      * 论文术语即时查词卡。
      * 只解释当前语境；不收藏、不打分，也不和主对话历史耦合。
@@ -9425,6 +11547,47 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
       const [glossaryEntries, setGlossaryEntries] = useState([])
       const [glossarySaving, setGlossarySaving] = useState(false)
       const [glossaryError, setGlossaryError] = useState('')
+      const [semanticOutlineState, setSemanticOutlineState] = useState({
+        status: 'idle',
+        outline: null,
+        warning: '',
+      })
+      const [outlineNonce, setOutlineNonce] = useState(0)
+      const [activeOutlineId, setActiveOutlineId] = useState('__meta_abstract')
+      const [readerMode, setReaderMode] = useState(() => {
+        try {
+          const saved = jobId
+            ? window.localStorage?.getItem(READER_MODE_STORAGE_PREFIX + jobId)
+            : ''
+          return ['research', 'inspiration'].includes(saved) ? saved : 'default'
+        } catch {
+          return 'default'
+        }
+      })
+      const [researchDirection, setResearchDirection] = useState(() => {
+        try {
+          return window.localStorage?.getItem(RESEARCH_DIRECTION_STORAGE_KEY) || ''
+        } catch {
+          return ''
+        }
+      })
+      const [researchEditorOpen, setResearchEditorOpen] = useState(false)
+      const [researchDraft, setResearchDraft] = useState('')
+      const [researchHelpOpen, setResearchHelpOpen] = useState(false)
+      const friendlyOutlineWarning = (value) => {
+        const text = String(value || '').replace(/\s+/g, ' ').trim()
+        if (!text) return '目录概括暂不可用，当前显示原始章节。'
+        if (/not found|http\s*404|语义目录接口/i.test(text)) {
+          return '语义目录服务暂未就绪，当前显示原始章节。'
+        }
+        if (/timeout|timed out|aborted|超时/i.test(text)) {
+          return '目录概括超时，当前显示原始章节。'
+        }
+        if (/no_api_key|没有模型 key/i.test(text)) {
+          return '没有可用的模型凭据，当前显示原始章节。'
+        }
+        return text.slice(0, 240)
+      }
       const annotations = useAnnotations()
       const rootRef = useRef(null)
       const outlineRef = useRef(null)
@@ -9510,6 +11673,115 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
         }
       }, [jobId])
 
+      useEffect(() => {
+        try {
+          const saved = jobId
+            ? window.localStorage?.getItem(READER_MODE_STORAGE_PREFIX + jobId)
+            : ''
+          setReaderMode(['research', 'inspiration'].includes(saved) ? saved : 'default')
+        } catch {
+          setReaderMode('default')
+        }
+      }, [jobId])
+
+      useEffect(() => {
+        if (!jobId) return
+        try {
+          window.localStorage?.setItem(READER_MODE_STORAGE_PREFIX + jobId, readerMode)
+        } catch {
+          // 存储不可用时，当前阅读页仍保留模式。
+        }
+      }, [jobId, readerMode])
+
+      useEffect(() => {
+        if (readerMode === 'research' && !researchDirection.trim()) {
+          setReaderMode('default')
+        }
+      }, [readerMode, researchDirection])
+
+      useEffect(() => {
+        if (!doc || !jobId) return undefined
+        let alive = true
+        const localFallback = () => {
+          const items = []
+          if (doc.meta?.abstract) {
+            items.push({
+              blockId: '__meta_abstract',
+              page: 1,
+              originalTitle: 'Abstract',
+              label: '摘要',
+              summary: String(doc.meta.abstract).slice(0, 160),
+            })
+          }
+          for (const block of doc.blocks || []) {
+            if (block.type !== 'heading' || !block.id) continue
+            if (/^(references?|bibliography|acknowledg|supporting|supplementary)/i.test(block.text || '')) continue
+            items.push({
+              blockId: block.id,
+              page: Number(block.page) || 0,
+              originalTitle: block.text || block.id,
+              label: block.text || block.id,
+              summary: '',
+            })
+          }
+          return {
+            version: 1,
+            semantic: false,
+            fallbackReason: 'client-fallback',
+            groups: [{ id: 'outline-fallback', label: '论文结构', summary: '', items }],
+          }
+        }
+        const run = async () => {
+          setSemanticOutlineState({ status: 'loading', outline: localFallback(), warning: '' })
+          try {
+            const initialResponse = await fetch(
+              apiUrl('jobs/' + jobId + '/semantic-outline'),
+              { cache: 'no-store' },
+            )
+            const initial = await initialResponse.json().catch(() => ({}))
+            if (!initialResponse.ok) throw new Error(initial.error || initialResponse.statusText)
+            if (!alive) return
+            if (initial.status === 'cached' && initial.outline?.semantic) {
+              setSemanticOutlineState({ status: 'ready', outline: initial.outline, warning: '' })
+              return
+            }
+            setSemanticOutlineState({
+              status: 'generating',
+              outline: initial.outline?.groups ? initial.outline : localFallback(),
+              warning: '',
+            })
+            const generatedResponse = await fetch(
+              apiUrl('jobs/' + jobId + '/semantic-outline'),
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ force: outlineNonce > 0 }),
+              },
+            )
+            const generated = await generatedResponse.json().catch(() => ({}))
+            if (!generatedResponse.ok) throw new Error(generated.error || generatedResponse.statusText)
+            if (!alive) return
+            setSemanticOutlineState({
+              status: generated.outline?.semantic ? 'ready' : 'fallback',
+              outline: generated.outline?.groups ? generated.outline : localFallback(),
+              warning: generated.warning || '',
+            })
+          } catch (cause) {
+            if (alive) {
+              setSemanticOutlineState({
+                status: 'fallback',
+                outline: localFallback(),
+                warning: '语义目录生成失败，已回退原文 heading：' + (cause?.message || String(cause)),
+              })
+            }
+          }
+        }
+        void run()
+        return () => {
+          alive = false
+        }
+      }, [doc, jobId, outlineNonce])
+
       // 阅读位置按篇记住：切页签、看引用再回来都落回原处；指定 blockId 时以引用处为准。
       useEffect(() => {
         const root = rootRef.current
@@ -9587,6 +11859,88 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
           observer?.disconnect()
         }
       }, [doc, jobId])
+
+      useEffect(() => {
+        const root = rootRef.current
+        if (!root || !doc) return undefined
+        const ids = (semanticOutlineState.outline?.groups || [])
+          .flatMap((group) => group.items || [])
+          .map((item) => item.blockId)
+          .filter(Boolean)
+        if (ids.length === 0) return undefined
+        let frame = 0
+        const update = () => {
+          frame = 0
+          const rootTop = root.getBoundingClientRect().top + 110
+          let current = ids[0]
+          for (const id of ids) {
+            const target = root.querySelector(
+              '[id="' + String(id).replace(/"/g, '\\"') + '"]',
+            )
+            if (!target) continue
+            if (target.getBoundingClientRect().top <= rootTop + 24) current = id
+            else break
+          }
+          setActiveOutlineId(current)
+        }
+        const onScroll = () => {
+          if (frame) return
+          frame = window.requestAnimationFrame(update)
+        }
+        update()
+        root.addEventListener('scroll', onScroll, { passive: true })
+        return () => {
+          root.removeEventListener('scroll', onScroll)
+          if (frame) window.cancelAnimationFrame(frame)
+        }
+      }, [doc, jobId, semanticOutlineState.outline])
+
+      // P3 阅读档案：只在本机累计当前可见阅读时长与到过的目录块。
+      useEffect(() => {
+        if (!jobId || !doc) return undefined
+        let lastTick = Date.now()
+        let pendingSeconds = 0
+        const activeItem = (semanticOutlineState.outline?.groups || [])
+          .flatMap((group) => group.items || [])
+          .find((item) => item.blockId === activeOutlineId)
+        const flush = () => {
+          if (pendingSeconds <= 0) return
+          const seconds = pendingSeconds
+          pendingSeconds = 0
+          fetch(apiUrl('knowledge/progress'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              jobId,
+              activeSeconds: seconds,
+              blockId: activeItem?.blockId || activeOutlineId || '',
+              page: activeItem?.page || 0,
+              section: activeItem?.label || activeItem?.originalTitle || '',
+            }),
+            keepalive: true,
+          }).catch(() => {})
+        }
+        const tick = () => {
+          const now = Date.now()
+          if (!document.hidden) pendingSeconds += Math.max(0, Math.floor((now - lastTick) / 1000))
+          lastTick = now
+        }
+        const timer = setInterval(() => {
+          tick()
+          flush()
+        }, 30000)
+        const onVisibility = () => {
+          tick()
+          if (document.hidden) flush()
+        }
+        document.addEventListener('visibilitychange', onVisibility)
+        return () => {
+          clearInterval(timer)
+          document.removeEventListener('visibilitychange', onVisibility)
+          tick()
+          flush()
+        }
+      }, [jobId, doc, activeOutlineId, semanticOutlineState.outline])
 
       useEffect(() => {
         if (!jobId) return
@@ -10018,9 +12372,17 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
           setCitationPreview({ ...next, stage: 'analyzing' })
           await runCitationAnalysis(next)
         } catch (cause) {
+          const errorText =
+            cause?.statusCode === 400
+              ? '这条引用的参考文献信息不完整，暂时无法解析。请关闭卡片后重试，或检查论文参考文献条目。'
+              : cause?.statusCode === 404
+                ? '引用服务没有找到对应数据，请刷新论文后重新点击蓝链。'
+                : cause?.statusCode === 413
+                  ? '这条引用携带的内容过大，已停止请求。请缩短批注或拆开引用。'
+                  : cause?.message || String(cause)
           setCitationPreview((current) =>
             current?.key === key
-              ? { ...current, stage: 'error', error: cause?.message || String(cause) }
+              ? { ...current, stage: 'error', error: errorText }
               : current,
           )
         }
@@ -10490,6 +12852,8 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
             version: doc?.version || {},
             brief: doc?.meta?.brief || {},
             nearbyAssets,
+            answerMode: readerMode,
+            researchDirection: readerMode === 'research' ? researchDirection : '',
           },
           sent: false,
         })
@@ -10890,6 +13254,21 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
               pageBadge(block.page, { always: true }),
               bubbleFor(block),
             ),
+            block.type === 'table' && block.tableStructure
+              ? React.createElement(
+                  'div',
+                  { className: 'dpr-tableStructureMeta' },
+                  '结构识别：' +
+                    (Number(block.tableStructure.rowCount) || 0) +
+                    ' 行 × ' +
+                    (Number(block.tableStructure.columnCount) || 0) +
+                    ' 列' +
+                    (block.continuation
+                      ? ' · 续表，承接 p.' + (Number(block.continuationOfPage) || '?')
+                      : '') +
+                    ' · 请与原表核对',
+                )
+              : null,
             formula?.valid
               ? React.createElement(
                   'div',
@@ -11188,23 +13567,53 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
       const tableRunning = tableState?.status === 'running'
       const reviewRunning = reviewState?.status === 'running'
       const reviewIssues = reviewData?.issues || reviewData?.review?.issues || []
-      const outlineItems = doc
-        ? [
-            ...(doc.meta?.abstract
-              ? [{ id: '__meta_abstract', label: t('reader.abstract'), page: 1 }]
-              : []),
-            ...(doc.blocks || [])
-              .filter((block) => block.type === 'heading' && block.id)
-              .map((block) => ({
-                id: block.id,
-                label: block.text || block.id,
-                page: block.page || 0,
-              })),
-          ]
-        : []
+      const outlineGroups = (semanticOutlineState.outline?.groups || []).map((group) => ({
+        ...group,
+        displayLabel: group.label || '论文结构',
+        items: (group.items || []).map((item) => {
+          const original = item.originalTitle || item.label || item.blockId
+          const translated = item.label || original
+          return {
+            ...item,
+            id: item.blockId,
+            label:
+              langMode === 'original'
+                ? original
+                : translated,
+            secondary:
+              langMode === 'bilingual' && original !== translated
+                ? original
+                : '',
+          }
+        }),
+      }))
       const jumpToOutline = (blockId) => {
         const target = rootRef.current?.querySelector('[id="' + String(blockId).replace(/"/g, '\\"') + '"]')
         target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+      const saveResearchDirection = (activate = true) => {
+        const value = String(researchDraft || '').trim().slice(0, 2000)
+        if (!value) return
+        setResearchDirection(value)
+        try {
+          window.localStorage?.setItem(RESEARCH_DIRECTION_STORAGE_KEY, value)
+        } catch {
+          // 当前页面仍保留。
+        }
+        setResearchEditorOpen(false)
+        setResearchHelpOpen(false)
+        if (activate) setReaderMode('research')
+      }
+      const chooseReaderMode = (mode) => {
+        if (mode === 'research' && !researchDirection.trim()) {
+          setResearchDraft('')
+          setResearchEditorOpen(true)
+          setResearchHelpOpen(true)
+          return
+        }
+        setResearchEditorOpen(false)
+        setResearchHelpOpen(false)
+        setReaderMode(mode)
       }
 
       return React.createElement(
@@ -11565,23 +13974,210 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
                   React.createElement(
                     'aside',
                     { className: 'dpr-readerOutline', ref: outlineRef, 'aria-label': t('reader.outline') },
-                    React.createElement('h3', null, t('reader.outline')),
                     React.createElement(
-                      'nav',
+                      'h3',
                       null,
-                      outlineItems.map((item, index) =>
-                        React.createElement(
-                          'button',
-                          {
-                            key: item.id,
-                            type: 'button',
-                            className: 'dpr-readerOutlineItem' + (index === 0 ? ' is-active' : ''),
-                            onClick: () => jumpToOutline(item.id),
-                          },
-                          React.createElement('span', null, item.label),
-                          item.page ? React.createElement('small', null, 'p.' + item.page) : null,
+                      t('reader.outline') +
+                        (semanticOutlineState.status === 'generating'
+                          ? ' · 正在概括…'
+                          : semanticOutlineState.status === 'ready'
+                            ? ' · 语义目录'
+                            : semanticOutlineState.status === 'fallback'
+                              ? ' · 原文目录'
+                              : ''),
+                    ),
+                    React.createElement(
+                      'div',
+                      { className: 'dpr-outlineScroll' },
+                      React.createElement(
+                        'nav',
+                        null,
+                        outlineGroups.map((group) => React.createElement(
+                          'div',
+                          { key: group.id || group.displayLabel, className: 'dpr-readerOutlineGroup' },
+                          group.displayLabel
+                            ? React.createElement(
+                                'div',
+                                { className: 'dpr-readerOutlineGroupLabel' },
+                                group.displayLabel,
+                              )
+                            : null,
+                          group.summary
+                            ? React.createElement(
+                                'span',
+                                { className: 'dpr-readerOutlineGroupSummary' },
+                                group.summary,
+                              )
+                            : null,
+                          group.items.map((item) =>
+                            React.createElement(
+                              'button',
+                              {
+                                key: item.id,
+                                type: 'button',
+                                className:
+                                  'dpr-readerOutlineItem' +
+                                  (activeOutlineId === item.id ? ' is-active' : ''),
+                                onClick: () => jumpToOutline(item.id),
+                              },
+                              React.createElement(
+                                'span',
+                                { className: 'dpr-readerOutlineMain' },
+                                React.createElement('span', null, item.label),
+                                item.secondary
+                                  ? React.createElement(
+                                      'span',
+                                      { className: 'dpr-readerOutlineSecondary' },
+                                      item.secondary,
+                                    )
+                                  : null,
+                              ),
+                              item.page ? React.createElement('small', null, 'p.' + item.page) : null,
+                            ),
+                          ),
+                        )),
+                      ),
+                    ),
+                    semanticOutlineState.status === 'fallback'
+                      ? React.createElement(
+                          'div',
+                          { className: 'dpr-outlineFallback' },
+                          React.createElement(
+                            'span',
+                            null,
+                            friendlyOutlineWarning(semanticOutlineState.warning),
+                          ),
+                          React.createElement(
+                            'button',
+                            {
+                              type: 'button',
+                              className: 'dpr-outlineRetry',
+                              onClick: () => setOutlineNonce((value) => value + 1),
+                            },
+                            '重试概括',
+                          ),
+                        )
+                      : null,
+                    React.createElement(
+                      'div',
+                      { className: 'dpr-readerModes' },
+                      React.createElement(
+                        'div',
+                        { className: 'dpr-readerModeRow', role: 'radiogroup', 'aria-label': '阅读问答模式' },
+                        ...[
+                          ['default', '默认精读'],
+                          ['research', '研究模式'],
+                          ['inspiration', '灵感模式'],
+                        ].map(([mode, label]) =>
+                          React.createElement(
+                            'button',
+                            {
+                              key: mode,
+                              type: 'button',
+                              role: 'radio',
+                              'aria-checked': readerMode === mode,
+                              className: 'dpr-readerModeBtn' + (readerMode === mode ? ' is-active' : ''),
+                              onClick: () => chooseReaderMode(mode),
+                            },
+                            label,
+                          ),
                         ),
                       ),
+                      React.createElement(
+                        'span',
+                        { className: 'dpr-readerModeHint' },
+                        readerMode === 'research'
+                          ? '研究方向：' +
+                              (researchDirection.length > 54
+                                ? researchDirection.slice(0, 53) + '…'
+                                : researchDirection)
+                          : readerMode === 'inspiration'
+                            ? '先解释原文，再给可验证创意；无检索时明确未查新。'
+                            : '默认只帮助准确理解论文，不强行联系研究方向。',
+                      ),
+                      readerMode === 'research'
+                        ? React.createElement(
+                            'button',
+                            {
+                              type: 'button',
+                              className: 'dpr-back',
+                              onClick: () => {
+                                setResearchDraft(researchDirection)
+                                setResearchEditorOpen((value) => !value)
+                              },
+                            },
+                            researchEditorOpen ? '收起研究方向' : '编辑研究方向',
+                          )
+                        : null,
+                      researchEditorOpen
+                        ? React.createElement(
+                            'div',
+                            { className: 'dpr-researchEditor' },
+                            researchHelpOpen
+                              ? React.createElement(
+                                  'div',
+                                  { className: 'dpr-researchHelp', role: 'status' },
+                                  React.createElement('strong', null, '研究模式会怎样回答'),
+                                  React.createElement(
+                                    'span',
+                                    null,
+                                    '仍先解释论文本身；只会在回答末尾说明其中的方法、数据、实验或工具能否为你的研究方向提供借鉴。方向只保存在本机，未填写不会启用。',
+                                  ),
+                                )
+                              : null,
+                            React.createElement('textarea', {
+                              value: researchDraft,
+                              'aria-label': '研究方向',
+                              placeholder: '例如：轻量视觉模型在低功耗边缘设备上的部署与评估',
+                              onChange: (event) => setResearchDraft(event.target.value),
+                            }),
+                            React.createElement(
+                              'div',
+                              { className: 'dpr-researchActions' },
+                              React.createElement(
+                                'button',
+                                {
+                                  type: 'button',
+                                  className: 'is-primary',
+                                  onClick: () => saveResearchDirection(true),
+                                },
+                                '保存并启用',
+                              ),
+                              React.createElement(
+                                'button',
+                                {
+                                  type: 'button',
+                                onClick: () => {
+                                  setResearchEditorOpen(false)
+                                  setResearchHelpOpen(false)
+                                },
+                                },
+                                '取消',
+                              ),
+                              researchDirection
+                                ? React.createElement(
+                                    'button',
+                                    {
+                                      type: 'button',
+                                      onClick: () => {
+                                        setResearchDirection('')
+                                        setResearchDraft('')
+                                        setResearchEditorOpen(false)
+                                        setResearchHelpOpen(false)
+                                        setReaderMode('default')
+                                        try {
+                                          window.localStorage?.removeItem(RESEARCH_DIRECTION_STORAGE_KEY)
+                                        } catch {
+                                          // ignore
+                                        }
+                                      },
+                                    },
+                                    '清空',
+                                  )
+                                : null,
+                            ),
+                          )
+                        : null,
                     ),
                   ),
                   React.createElement(
@@ -11887,6 +14483,22 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
       }
     }
 
+    function libraryType() {
+      return {
+        id: LIBRARY_ID,
+        kind: LIBRARY_KIND,
+        title: () => '文档管理',
+      }
+    }
+
+    function knowledgeType() {
+      return {
+        id: KNOWLEDGE_ID,
+        kind: KNOWLEDGE_KIND,
+        title: () => '知识中心',
+      }
+    }
+
     function apply(ctx) {
       ctx.effect(
         () => ctx.locale.register(NS, { zh: DICT_ZH, en: DICT_EN }),
@@ -12004,6 +14616,14 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
         () => ctx.sidebarRightTabs.register(surveyType(t)),
         'dsh-doraemon-paper-reader: survey tab type',
       )
+      ctx.effect(
+        () => ctx.sidebarRightTabs.register(libraryType()),
+        'dsh-doraemon-paper-reader: library tab type',
+      )
+      ctx.effect(
+        () => ctx.sidebarRightTabs.register(knowledgeType()),
+        'dsh-doraemon-paper-reader: knowledge tab type',
+      )
 
       ctx.effect(
         () =>
@@ -12036,6 +14656,20 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
             ctx.slots.register({ name: 'sidebar.right.pane.tab', key: SURVEY_ID, locale: NS }, SurveyBody),
           ),
         'dsh-doraemon-paper-reader: survey tab body',
+      )
+      ctx.effect(
+        () =>
+          ctx.slots.inject('sidebar.right.pane.tab', () =>
+            ctx.slots.register({ name: 'sidebar.right.pane.tab', key: LIBRARY_ID, locale: NS }, LibraryBody),
+          ),
+        'dsh-doraemon-paper-reader: library tab body',
+      )
+      ctx.effect(
+        () =>
+          ctx.slots.inject('sidebar.right.pane.tab', () =>
+            ctx.slots.register({ name: 'sidebar.right.pane.tab', key: KNOWLEDGE_ID, locale: NS }, KnowledgeBody),
+          ),
+        'dsh-doraemon-paper-reader: knowledge tab body',
       )
       ctx.effect(
         () =>
@@ -12101,6 +14735,10 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
         READER_ID: READER_ID,
         SURVEY_KIND: SURVEY_KIND,
         SURVEY_ID: SURVEY_ID,
+        LIBRARY_KIND: LIBRARY_KIND,
+        LIBRARY_ID: LIBRARY_ID,
+        KNOWLEDGE_KIND: KNOWLEDGE_KIND,
+        KNOWLEDGE_ID: KNOWLEDGE_ID,
         COMPARE_ID: COMPARE_ID,
         JOB_STORAGE_KEY: JOB_STORAGE_KEY,
         STAGE_ORDER: STAGE_ORDER,
@@ -12149,6 +14787,9 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
         MaintenanceDialog: MaintenanceDialog,
         ReaderBody: ReaderBody,
         SurveyBody: SurveyBody,
+        LibraryBody: LibraryBody,
+        KnowledgeBody: KnowledgeBody,
+        libraryStatusLabel: libraryStatusLabel,
         CompareOverlay: CompareOverlay,
         PaperPane: PaperPane,
         CompareWorkspace: CompareWorkspace,

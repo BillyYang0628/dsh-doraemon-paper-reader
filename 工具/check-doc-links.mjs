@@ -1,12 +1,13 @@
 // 文档相对链接体检：扫描仓库内的 Markdown，检查相对链接能否落到真实文件。
 // 用法：node 工具/check-doc-links.mjs
-// 排除：.git、node_modules、工具/gen（存放外部文档转储，其中的相对链接天然指向别处）。
+// 排除：.git、node_modules、工具/gen、work、dist（外部转储/解包产物里的相对链接
+// 天然指向它们自己的包根，不能按本仓库路径判断）。
 
 import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 
 const root = process.cwd();
-const skipDirs = new Set(['.git', 'node_modules', 'gen']);
+const skipDirs = new Set(['.git', 'node_modules', 'gen', 'work', 'dist']);
 const linkRe = /\]\(([^)]+)\)/g;
 
 async function walk(dir, out = []) {

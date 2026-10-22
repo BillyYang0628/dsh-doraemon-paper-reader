@@ -1,0 +1,1753 @@
+{
+  "version": 1,
+  "generatedAt": "2026-10-22T03:13:50.567Z",
+  "scope": "自动从本地真实论文参考文献抽取的分层回归种子；只用于本项目回归，不代表全球检索准确率。",
+  "limitations": [
+    "DOI/arXiv 标签可直接核对；title-only 标签来自参考文献解析，需在失败复盘中人工确认。",
+    "本文件用于分片指标和失败吸收，不允许用总体均值替代分片结果。",
+    "自动种子不是全球学术检索准确率证明；新增真实失败案例必须持续并入并按 stratum/queryKind 分片报告。",
+    "通过 --failures 合并的真实失败优先保留，不得为了总体均值删除困难样本。"
+  ],
+  "cases": [
+    {
+      "id": "0141f2b1-e958-4822-aad5-ec9229a5abca:noid:2a2d9d93",
+      "stratum": "identifier-reference",
+      "queryKind": "doi-exact",
+      "query": {
+        "kind": "doi-exact",
+        "text": "10.48550/arxiv.2406.04127"
+      },
+      "gold": {
+        "doi": "10.48550/arxiv.2406.04127",
+        "arxiv": "2406.04127",
+        "title": "Are we done with mmlu?"
+      },
+      "labelBasis": "reference-doi",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+        "page": 0,
+        "referenceNumber": 0,
+        "referenceText": "Gema et al. (2024)\n\nA. P. Gema, J. O. J. Leang, G. Hong, A. Devoto, A. C. M. Mancino, R. Saxena, X. He, Y. Zhao, X. Du, M. R. G. Madani, C. Barale, R. McHardy, J. Harris, J. Kaddour, E. van Krieken, and P. Minervini.\n\nAre we done with mmlu?\n\nCoRR, abs/2406.04127, 2024.\n\nURL https://doi.org/10.48550/arXiv.2406.04127.",
+        "parsedFields": {
+          "title": "Are we done with mmlu?",
+          "authors": "Gema et al",
+          "venue": "P",
+          "year": "2024"
+        }
+      },
+      "citationContext": ""
+    },
+    {
+      "id": "0141f2b1-e958-4822-aad5-ec9229a5abca:noid:9bf0e363",
+      "stratum": "identifier-reference",
+      "queryKind": "doi-exact",
+      "query": {
+        "kind": "doi-exact",
+        "text": "10.48550/arxiv.2403.07974"
+      },
+      "gold": {
+        "doi": "10.48550/arxiv.2403.07974",
+        "arxiv": "2403.07974",
+        "title": "Livecodebench: Holistic and contamination free evaluation of large language models for code"
+      },
+      "labelBasis": "reference-doi",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+        "page": 0,
+        "referenceNumber": 0,
+        "referenceText": "Jain et al. (2024)\n\nN. Jain, K. Han, A. Gu, W. Li, F. Yan, T. Zhang, S. Wang, A. Solar-Lezama, K. Sen, and I. Stoica.\n\nLivecodebench: Holistic and contamination free evaluation of large language models for code.\n\nCoRR, abs/2403.07974, 2024.\n\nURL https://doi.org/10.48550/arXiv.2403.07974.",
+        "parsedFields": {
+          "title": "Livecodebench: Holistic and contamination free evaluation of large language models for code",
+          "authors": "Jain et al",
+          "venue": "Jain, K",
+          "year": "2024"
+        }
+      },
+      "citationContext": ""
+    },
+    {
+      "id": "0141f2b1-e958-4822-aad5-ec9229a5abca:noid:c94dfdff",
+      "stratum": "identifier-reference",
+      "queryKind": "doi-exact",
+      "query": {
+        "kind": "doi-exact",
+        "text": "10.48550/arxiv.2409.12941"
+      },
+      "gold": {
+        "doi": "10.48550/arxiv.2409.12941",
+        "arxiv": "2409.12941",
+        "title": "Fact, fetch, and reason: A unified evaluation of retrieval-augmented generation"
+      },
+      "labelBasis": "reference-doi",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+        "page": 0,
+        "referenceNumber": 0,
+        "referenceText": "Krishna et al. (2024)\n\nS. Krishna, K. Krishna, A. Mohananey, S. Schwarcz, A. Stambler, S. Upadhyay, and M. Faruqui.\n\nFact, fetch, and reason: A unified evaluation of retrieval-augmented generation.\n\nCoRR, abs/2409.12941, 2024.\n\n10.48550/ARXIV.2409.12941.\n\nURL https://doi.org/10.48550/arXiv.2409.12941.",
+        "parsedFields": {
+          "title": "Fact, fetch, and reason: A unified evaluation of retrieval-augmented generation",
+          "authors": "Krishna et al",
+          "venue": "Krishna, K",
+          "year": "2024"
+        }
+      },
+      "citationContext": ""
+    },
+    {
+      "id": "0141f2b1-e958-4822-aad5-ec9229a5abca:noid:5c739fc3",
+      "stratum": "identifier-reference",
+      "queryKind": "doi-exact",
+      "query": {
+        "kind": "doi-exact",
+        "text": "10.1038/nature24270"
+      },
+      "gold": {
+        "doi": "10.1038/nature24270",
+        "arxiv": "",
+        "title": "Mastering the game of go without human knowledge"
+      },
+      "labelBasis": "reference-doi",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+        "page": 0,
+        "referenceNumber": 0,
+        "referenceText": "Silver et al. (2017b)\n\nD. Silver, J. Schrittwieser, K. Simonyan, I. Antonoglou, A. Huang, A. Guez, T. Hubert, L. Baker, M. Lai, A. Bolton, Y. Chen, T. P. Lillicrap, F. Hui, L. Sifre, G. van den Driessche, T. Graepel, and D. Hassabis.\n\nMastering the game of go without human knowledge.\n\nNat., 550(7676):354–359, 2017b.\n\n10.1038/NATURE24270.\n\nURL https://doi.org/10.1038/nature24270.",
+        "parsedFields": {
+          "title": "Mastering the game of go without human knowledge",
+          "authors": "Silver et al",
+          "venue": "Silver, J",
+          "year": ""
+        }
+      },
+      "citationContext": ""
+    },
+    {
+      "id": "0141f2b1-e958-4822-aad5-ec9229a5abca:noid:da0a363e",
+      "stratum": "identifier-reference",
+      "queryKind": "doi-exact",
+      "query": {
+        "kind": "doi-exact",
+        "text": "10.1038/s41586-023-06747-5"
+      },
+      "gold": {
+        "doi": "10.1038/s41586-023-06747-5",
+        "arxiv": "",
+        "title": "Solving olympiad geometry without human demonstrations"
+      },
+      "labelBasis": "reference-doi",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+        "page": 0,
+        "referenceNumber": 0,
+        "referenceText": "Trinh et al. (2024)\n\nT. Trinh, Y. Wu, Q. Le, H. He, and T. Luong.\n\nSolving olympiad geometry without human demonstrations.\n\nNature, 2024.\n\n10.1038/s41586-023-06747-5.",
+        "parsedFields": {
+          "title": "Solving olympiad geometry without human demonstrations",
+          "authors": "Trinh et al",
+          "venue": "Trinh, Y",
+          "year": "2024"
+        }
+      },
+      "citationContext": ""
+    },
+    {
+      "id": "0141f2b1-e958-4822-aad5-ec9229a5abca:noid:f8f7ef60",
+      "stratum": "identifier-reference",
+      "queryKind": "doi-exact",
+      "query": {
+        "kind": "doi-exact",
+        "text": "10.48550/arxiv.2406.01574"
+      },
+      "gold": {
+        "doi": "10.48550/arxiv.2406.01574",
+        "arxiv": "2406.01574",
+        "title": "Mmlu-pro: A more robust and challenging multi-task language understanding benchmark"
+      },
+      "labelBasis": "reference-doi",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+        "page": 0,
+        "referenceNumber": 0,
+        "referenceText": "Wang et al. (2024)\n\nY. Wang, X. Ma, G. Zhang, Y. Ni, A. Chandra, S. Guo, W. Ren, A. Arulraj, X. He, Z. Jiang, T. Li, M. Ku, K. Wang, A. Zhuang, R. Fan, X. Yue, and W. Chen.\n\nMmlu-pro: A more robust and challenging multi-task language understanding benchmark.\n\nCoRR, abs/2406.01574, 2024.\n\nURL https://doi.org/10.48550/arXiv.2406.01574.",
+        "parsedFields": {
+          "title": "Mmlu-pro: A more robust and challenging multi-task language understanding benchmark",
+          "authors": "Wang et al",
+          "venue": "Wang, X",
+          "year": "2024"
+        }
+      },
+      "citationContext": ""
+    },
+    {
+      "id": "bfe4b2db-eb97-442b-bb55-ca12bd6e2170:noid:67d68048",
+      "stratum": "identifier-reference",
+      "queryKind": "doi-exact",
+      "query": {
+        "kind": "doi-exact",
+        "text": "10.18653/v1/2023.findings-acl.719"
+      },
+      "gold": {
+        "doi": "10.18653/v1/2023.findings-acl.719",
+        "arxiv": "",
+        "title": "Membership Inference Attacks against Language Models via Neighbourhood Comparison"
+      },
+      "labelBasis": "reference-doi",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "Riddle Me This! Stealthy Membership Inference for Retrieval-Augmented Generation",
+        "page": 0,
+        "referenceNumber": 0,
+        "referenceText": "Mattern et al. (2023)\n\nJustus Mattern, Fatemehsadat Mireshghallah, Zhijing Jin, Bernhard Schoelkopf, Mrinmaya Sachan, and Taylor Berg-Kirkpatrick. 2023.\n\nMembership Inference Attacks against Language Models via Neighbourhood Comparison. In Findings of the Association for Computational Linguistics: ACL 2023. Association for Computational Linguistics, Toronto, Canada, 11330–11343.\n\nhttps://doi.org/10.18653/v1/2023.findings-acl.719",
+        "parsedFields": {
+          "title": "Membership Inference Attacks against Language Models via Neighbourhood Comparison",
+          "authors": "Mattern et al",
+          "venue": "2023",
+          "year": "2023"
+        }
+      },
+      "citationContext": ""
+    },
+    {
+      "id": "0141f2b1-e958-4822-aad5-ec9229a5abca:noid:ceef1c51",
+      "stratum": "arxiv-reference",
+      "queryKind": "arxiv-exact",
+      "query": {
+        "kind": "arxiv-exact",
+        "text": "2107.03374"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "2107.03374",
+        "title": "Evaluating large language models trained on code"
+      },
+      "labelBasis": "reference-arxiv",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+        "page": 0,
+        "referenceNumber": 0,
+        "referenceText": "Chen et al. (2021)\n\nM. Chen, J. Tworek, H. Jun, Q. Yuan, H. P. de Oliveira Pinto, J. Kaplan, H. Edwards, Y. Burda, N. Joseph, G. Brockman, A. Ray, R. Puri, G. Krueger, M. Petrov, H. Khlaaf, G. Sastry, P. Mishkin, B. Chan, S. Gray, N. Ryder, M. Pavlov, A. Power, L. Kaiser, M. Bavarian, C. Winter, P. Tillet, F. P. Such, D. Cummings, M. Plappert, F. Chantzis, E. Barnes, A. Herbert-Voss, W. H. Guss, A. Nichol, A. Paino, N. Tezak, J. Tang, I. Babuschkin, S. Balaji, S. Jain, W. Saunders, C. Hesse, A. N. Carr, J. Leike, J. Achiam, V. Misra, E. Morikawa, A. Radford, M. Knight, M. Brundage, M. Murati, K. Mayer, P. Welinder, B. McGrew, D. Amodei, S. McCandlish, I. Sutskever, and W. Zaremba.\n\nEvaluating large language models trained on code.\n\nCoRR, abs/2107.03374, 2021.\n\nURL https://arxiv.org/abs/2107.03374.",
+        "parsedFields": {
+          "title": "Evaluating large language models trained on code",
+          "authors": "Chen et al",
+          "venue": "Chen, J",
+          "year": "2021"
+        }
+      },
+      "citationContext": ""
+    },
+    {
+      "id": "0141f2b1-e958-4822-aad5-ec9229a5abca:noid:4c65857b",
+      "stratum": "arxiv-reference",
+      "queryKind": "arxiv-exact",
+      "query": {
+        "kind": "arxiv-exact",
+        "text": "2407.21783"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "2407.21783",
+        "title": "The llama 3 herd of models"
+      },
+      "labelBasis": "reference-arxiv",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+        "page": 0,
+        "referenceNumber": 0,
+        "referenceText": "Dubey et al. (2024)\n\nA. Dubey, A. Jauhri, A. Pandey, A. Kadian, A. Al-Dahle, A. Letman, A. Mathur, A. Schelten, A. Yang, A. Fan, et al.\n\nThe llama 3 herd of models.\n\narXiv preprint arXiv:2407.21783, 2024.",
+        "parsedFields": {
+          "title": "The llama 3 herd of models",
+          "authors": "Dubey et al",
+          "venue": "Dubey, A",
+          "year": "2024"
+        }
+      },
+      "citationContext": ""
+    },
+    {
+      "id": "0141f2b1-e958-4822-aad5-ec9229a5abca:noid:80576b5b",
+      "stratum": "arxiv-reference",
+      "queryKind": "arxiv-exact",
+      "query": {
+        "kind": "arxiv-exact",
+        "text": "2404.04475"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "2404.04475",
+        "title": "Length-controlled alpacaeval: A simple way to debias automatic evaluators"
+      },
+      "labelBasis": "reference-arxiv",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+        "page": 0,
+        "referenceNumber": 0,
+        "referenceText": "Dubois et al. (2024)\n\nY. Dubois, B. Galambosi, P. Liang, and T. B. Hashimoto.\n\nLength-controlled alpacaeval: A simple way to debias automatic evaluators.\n\narXiv preprint arXiv:2404.04475, 2024.",
+        "parsedFields": {
+          "title": "Length-controlled alpacaeval: A simple way to debias automatic evaluators",
+          "authors": "Dubois et al",
+          "venue": "Dubois, B",
+          "year": "2024"
+        }
+      },
+      "citationContext": ""
+    },
+    {
+      "id": "0141f2b1-e958-4822-aad5-ec9229a5abca:noid:5bacc35f",
+      "stratum": "arxiv-reference",
+      "queryKind": "arxiv-exact",
+      "query": {
+        "kind": "arxiv-exact",
+        "text": "2309.17179"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "2309.17179",
+        "title": "Alphazero-like tree-search can guide large language model decoding and training,"
+      },
+      "labelBasis": "reference-arxiv",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+        "page": 0,
+        "referenceNumber": 0,
+        "referenceText": "Feng et al. (2024)\n\nX. Feng, Z. Wan, M. Wen, S. M. McAleer, Y. Wen, W. Zhang, and J. Wang.\n\nAlphazero-like tree-search can guide large language model decoding and training, 2024.\n\nURL https://arxiv.org/abs/2309.17179.",
+        "parsedFields": {
+          "title": "Alphazero-like tree-search can guide large language model decoding and training,",
+          "authors": "Feng et al",
+          "venue": "Feng, Z",
+          "year": "2024"
+        }
+      },
+      "citationContext": ""
+    },
+    {
+      "id": "0141f2b1-e958-4822-aad5-ec9229a5abca:noid:27abb766",
+      "stratum": "arxiv-reference",
+      "queryKind": "arxiv-exact",
+      "query": {
+        "kind": "arxiv-exact",
+        "text": "2210.10760"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "2210.10760",
+        "title": "Scaling laws for reward model overoptimization,"
+      },
+      "labelBasis": "reference-arxiv",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+        "page": 0,
+        "referenceNumber": 0,
+        "referenceText": "Gao et al. (2022)\n\nL. Gao, J. Schulman, and J. Hilton.\n\nScaling laws for reward model overoptimization, 2022.\n\nURL https://arxiv.org/abs/2210.10760.",
+        "parsedFields": {
+          "title": "Scaling laws for reward model overoptimization,",
+          "authors": "Gao et al",
+          "venue": "Gao, J",
+          "year": "2022"
+        }
+      },
+      "citationContext": ""
+    },
+    {
+      "id": "0141f2b1-e958-4822-aad5-ec9229a5abca:noid:ca9e4fe2",
+      "stratum": "arxiv-reference",
+      "queryKind": "title_author_year",
+      "query": {
+        "kind": "title_author_year",
+        "text": "Chinese simpleqa: A chinese factuality evaluation for large language models He et al 2024"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "2411.07140",
+        "title": "Chinese simpleqa: A chinese factuality evaluation for large language models"
+      },
+      "labelBasis": "reference-arxiv",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+        "page": 0,
+        "referenceNumber": 0,
+        "referenceText": "He et al. (2024)\n\nY. He, S. Li, J. Liu, Y. Tan, W. Wang, H. Huang, X. Bu, H. Guo, C. Hu, B. Zheng, et al.\n\nChinese simpleqa: A chinese factuality evaluation for large language models.\n\narXiv preprint arXiv:2411.07140, 2024.",
+        "parsedFields": {
+          "title": "Chinese simpleqa: A chinese factuality evaluation for large language models",
+          "authors": "He et al",
+          "venue": "He, S",
+          "year": "2024"
+        }
+      },
+      "citationContext": ""
+    },
+    {
+      "id": "0141f2b1-e958-4822-aad5-ec9229a5abca:noid:2df868a7",
+      "stratum": "arxiv-reference",
+      "queryKind": "arxiv-exact",
+      "query": {
+        "kind": "arxiv-exact",
+        "text": "2009.03300"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "2009.03300",
+        "title": "Measuring massive multitask language understanding"
+      },
+      "labelBasis": "reference-arxiv",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+        "page": 0,
+        "referenceNumber": 0,
+        "referenceText": "Hendrycks et al. (2020)\n\nD. Hendrycks, C. Burns, S. Basart, A. Zou, M. Mazeika, D. Song, and J. Steinhardt.\n\nMeasuring massive multitask language understanding.\n\narXiv preprint arXiv:2009.03300, 2020.",
+        "parsedFields": {
+          "title": "Measuring massive multitask language understanding",
+          "authors": "Hendrycks et al",
+          "venue": "Hendrycks, C",
+          "year": "2020"
+        }
+      },
+      "citationContext": ""
+    },
+    {
+      "id": "0141f2b1-e958-4822-aad5-ec9229a5abca:noid:9deb19dc",
+      "stratum": "arxiv-reference",
+      "queryKind": "arxiv-exact",
+      "query": {
+        "kind": "arxiv-exact",
+        "text": "2305.08322"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "2305.08322",
+        "title": "C-Eval: A multi-level multi-discipline chinese evaluation suite for foundation models"
+      },
+      "labelBasis": "reference-arxiv",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+        "page": 0,
+        "referenceNumber": 0,
+        "referenceText": "Huang et al. (2023)\n\nY. Huang, Y. Bai, Z. Zhu, J. Zhang, J. Zhang, T. Su, J. Liu, C. Lv, Y. Zhang, J. Lei, et al.\n\nC-Eval: A multi-level multi-discipline chinese evaluation suite for foundation models.\n\narXiv preprint arXiv:2305.08322, 2023.",
+        "parsedFields": {
+          "title": "C-Eval: A multi-level multi-discipline chinese evaluation suite for foundation models",
+          "authors": "Huang et al",
+          "venue": "Huang, Y",
+          "year": "2023"
+        }
+      },
+      "citationContext": ""
+    },
+    {
+      "id": "0141f2b1-e958-4822-aad5-ec9229a5abca:noid:2d280775",
+      "stratum": "arxiv-reference",
+      "queryKind": "title_author_year",
+      "query": {
+        "kind": "title_author_year",
+        "text": "Training language models to self-correct via reinforcement learning Kumar et al 2024"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "2409.12917",
+        "title": "Training language models to self-correct via reinforcement learning"
+      },
+      "labelBasis": "reference-arxiv",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+        "page": 0,
+        "referenceNumber": 0,
+        "referenceText": "Kumar et al. (2024)\n\nA. Kumar, V. Zhuang, R. Agarwal, Y. Su, J. D. Co-Reyes, A. Singh, K. Baumli, S. Iqbal, C. Bishop, R. Roelofs, et al.\n\nTraining language models to self-correct via reinforcement learning.\n\narXiv preprint arXiv:2409.12917, 2024.",
+        "parsedFields": {
+          "title": "Training language models to self-correct via reinforcement learning",
+          "authors": "Kumar et al",
+          "venue": "Kumar, V",
+          "year": "2024"
+        }
+      },
+      "citationContext": ""
+    },
+    {
+      "id": "0141f2b1-e958-4822-aad5-ec9229a5abca:noid:42c6bf20",
+      "stratum": "arxiv-reference",
+      "queryKind": "arxiv-exact",
+      "query": {
+        "kind": "arxiv-exact",
+        "text": "2306.09212"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "2306.09212",
+        "title": "CMMLU: Measuring massive multitask language understanding in Chinese"
+      },
+      "labelBasis": "reference-arxiv",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+        "page": 0,
+        "referenceNumber": 0,
+        "referenceText": "Li et al. (2023)\n\nH. Li, Y. Zhang, F. Koto, Y. Yang, H. Zhao, Y. Gong, N. Duan, and T. Baldwin.\n\nCMMLU: Measuring massive multitask language understanding in Chinese.\n\narXiv preprint arXiv:2306.09212, 2023.",
+        "parsedFields": {
+          "title": "CMMLU: Measuring massive multitask language understanding in Chinese",
+          "authors": "Li et al",
+          "venue": "Li, Y",
+          "year": "2023"
+        }
+      },
+      "citationContext": ""
+    },
+    {
+      "id": "0141f2b1-e958-4822-aad5-ec9229a5abca:noid:b41374af",
+      "stratum": "arxiv-reference",
+      "queryKind": "arxiv-exact",
+      "query": {
+        "kind": "arxiv-exact",
+        "text": "2406.11939"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "2406.11939",
+        "title": "From crowdsourced data to high-quality benchmarks: Arena-hard and benchbuilder pipeline"
+      },
+      "labelBasis": "reference-arxiv",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+        "page": 0,
+        "referenceNumber": 0,
+        "referenceText": "Li et al. (2024)\n\nT. Li, W.-L. Chiang, E. Frick, L. Dunlap, T. Wu, B. Zhu, J. E. Gonzalez, and I. Stoica.\n\nFrom crowdsourced data to high-quality benchmarks: Arena-hard and benchbuilder pipeline.\n\narXiv preprint arXiv:2406.11939, 2024.",
+        "parsedFields": {
+          "title": "From crowdsourced data to high-quality benchmarks: Arena-hard and benchbuilder pipeline",
+          "authors": "Li et al",
+          "venue": "Li, W.-L",
+          "year": "2024"
+        }
+      },
+      "citationContext": ""
+    },
+    {
+      "id": "0141f2b1-e958-4822-aad5-ec9229a5abca:noid:d7cf9277",
+      "stratum": "arxiv-reference",
+      "queryKind": "title_author_year",
+      "query": {
+        "kind": "title_author_year",
+        "text": "Let’s verify step by step Lightman et al 2023"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "2305.20050",
+        "title": "Let’s verify step by step"
+      },
+      "labelBasis": "reference-arxiv",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+        "page": 0,
+        "referenceNumber": 0,
+        "referenceText": "Lightman et al. (2023)\n\nH. Lightman, V. Kosaraju, Y. Burda, H. Edwards, B. Baker, T. Lee, J. Leike, J. Schulman, I. Sutskever, and K. Cobbe.\n\nLet’s verify step by step.\n\narXiv preprint arXiv:2305.20050, 2023.",
+        "parsedFields": {
+          "title": "Let’s verify step by step",
+          "authors": "Lightman et al",
+          "venue": "Lightman, V",
+          "year": "2023"
+        }
+      },
+      "citationContext": ""
+    },
+    {
+      "id": "0141f2b1-e958-4822-aad5-ec9229a5abca:noid:16ff4e52",
+      "stratum": "arxiv-reference",
+      "queryKind": "author_venue_year",
+      "query": {
+        "kind": "author_venue_year",
+        "text": "Rein et al Rein, B 2023"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "2311.12022",
+        "title": "GPQA: A graduate-level google-proof q&a benchmark"
+      },
+      "labelBasis": "reference-arxiv",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+        "page": 0,
+        "referenceNumber": 0,
+        "referenceText": "Rein et al. (2023)\n\nD. Rein, B. L. Hou, A. C. Stickland, J. Petty, R. Y. Pang, J. Dirani, J. Michael, and S. R. Bowman.\n\nGPQA: A graduate-level google-proof q&a benchmark.\n\narXiv preprint arXiv:2311.12022, 2023.",
+        "parsedFields": {
+          "title": "GPQA: A graduate-level google-proof q&a benchmark",
+          "authors": "Rein et al",
+          "venue": "Rein, B",
+          "year": "2023"
+        }
+      },
+      "citationContext": ""
+    },
+    {
+      "id": "0141f2b1-e958-4822-aad5-ec9229a5abca:noid:0664e5b6",
+      "stratum": "arxiv-reference",
+      "queryKind": "arxiv-exact",
+      "query": {
+        "kind": "arxiv-exact",
+        "text": "2402.03300"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "2402.03300",
+        "title": "Deepseekmath: Pushing the limits of mathematical reasoning in open language models"
+      },
+      "labelBasis": "reference-arxiv",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+        "page": 0,
+        "referenceNumber": 0,
+        "referenceText": "Shao et al. (2024)\n\nZ. Shao, P. Wang, Q. Zhu, R. Xu, J. Song, M. Zhang, Y. Li, Y. Wu, and D. Guo.\n\nDeepseekmath: Pushing the limits of mathematical reasoning in open language models.\n\narXiv preprint arXiv:2402.03300, 2024.",
+        "parsedFields": {
+          "title": "Deepseekmath: Pushing the limits of mathematical reasoning in open language models",
+          "authors": "Shao et al",
+          "venue": "Shao, P",
+          "year": "2024"
+        }
+      },
+      "citationContext": ""
+    },
+    {
+      "id": "0141f2b1-e958-4822-aad5-ec9229a5abca:noid:0a8856e4",
+      "stratum": "arxiv-reference",
+      "queryKind": "arxiv-exact",
+      "query": {
+        "kind": "arxiv-exact",
+        "text": "1712.01815"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "1712.01815",
+        "title": "Mastering chess and shogi by self-play with a general reinforcement learning algorithm"
+      },
+      "labelBasis": "reference-arxiv",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+        "page": 0,
+        "referenceNumber": 0,
+        "referenceText": "Silver et al. (2017a)\n\nD. Silver, T. Hubert, J. Schrittwieser, I. Antonoglou, M. Lai, A. Guez, M. Lanctot, L. Sifre, D. Kumaran, T. Graepel, T. P. Lillicrap, K. Simonyan, and D. Hassabis.\n\nMastering chess and shogi by self-play with a general reinforcement learning algorithm.\n\nCoRR, abs/1712.01815, 2017a.\n\nURL http://arxiv.org/abs/1712.01815.",
+        "parsedFields": {
+          "title": "Mastering chess and shogi by self-play with a general reinforcement learning algorithm",
+          "authors": "Silver et al",
+          "venue": "Silver, T",
+          "year": ""
+        }
+      },
+      "citationContext": ""
+    },
+    {
+      "id": "0141f2b1-e958-4822-aad5-ec9229a5abca:noid:a74235d8",
+      "stratum": "arxiv-reference",
+      "queryKind": "title_author_year",
+      "query": {
+        "kind": "title_author_year",
+        "text": "Scaling llm test-time compute optimally can be more effective than scaling model parameters, Snell et al 2024"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "2408.03314",
+        "title": "Scaling llm test-time compute optimally can be more effective than scaling model parameters,"
+      },
+      "labelBasis": "reference-arxiv",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+        "page": 0,
+        "referenceNumber": 0,
+        "referenceText": "Snell et al. (2024)\n\nC. Snell, J. Lee, K. Xu, and A. Kumar.\n\nScaling llm test-time compute optimally can be more effective than scaling model parameters, 2024.\n\nURL https://arxiv.org/abs/2408.03314.",
+        "parsedFields": {
+          "title": "Scaling llm test-time compute optimally can be more effective than scaling model parameters,",
+          "authors": "Snell et al",
+          "venue": "Snell, J",
+          "year": "2024"
+        }
+      },
+      "citationContext": ""
+    },
+    {
+      "id": "0141f2b1-e958-4822-aad5-ec9229a5abca:noid:bb4c6499",
+      "stratum": "arxiv-reference",
+      "queryKind": "arxiv-exact",
+      "query": {
+        "kind": "arxiv-exact",
+        "text": "2211.14275"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "2211.14275",
+        "title": "Solving math word problems with process-and outcome-based feedback"
+      },
+      "labelBasis": "reference-arxiv",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+        "page": 0,
+        "referenceNumber": 0,
+        "referenceText": "Uesato et al. (2022)\n\nJ. Uesato, N. Kushman, R. Kumar, F. Song, N. Siegel, L. Wang, A. Creswell, G. Irving, and I. Higgins.\n\nSolving math word problems with process-and outcome-based feedback.\n\narXiv preprint arXiv:2211.14275, 2022.",
+        "parsedFields": {
+          "title": "Solving math word problems with process-and outcome-based feedback",
+          "authors": "Uesato et al",
+          "venue": "Uesato, N",
+          "year": "2022"
+        }
+      },
+      "citationContext": ""
+    },
+    {
+      "id": "0141f2b1-e958-4822-aad5-ec9229a5abca:noid:f5b3c4b7",
+      "stratum": "arxiv-reference",
+      "queryKind": "arxiv-exact",
+      "query": {
+        "kind": "arxiv-exact",
+        "text": "2312.08935"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "2312.08935",
+        "title": "Math-shepherd: A label-free step-by-step verifier for llms in mathematical reasoning"
+      },
+      "labelBasis": "reference-arxiv",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+        "page": 0,
+        "referenceNumber": 0,
+        "referenceText": "Wang et al. (2023)\n\nP. Wang, L. Li, Z. Shao, R. Xu, D. Dai, Y. Li, D. Chen, Y. Wu, and Z. Sui.\n\nMath-shepherd: A label-free step-by-step verifier for llms in mathematical reasoning.\n\narXiv preprint arXiv:2312.08935, 2023.",
+        "parsedFields": {
+          "title": "Math-shepherd: A label-free step-by-step verifier for llms in mathematical reasoning",
+          "authors": "Wang et al",
+          "venue": "Wang, L",
+          "year": "2023"
+        }
+      },
+      "citationContext": ""
+    },
+    {
+      "id": "0141f2b1-e958-4822-aad5-ec9229a5abca:noid:4835e824",
+      "stratum": "arxiv-reference",
+      "queryKind": "arxiv-exact",
+      "query": {
+        "kind": "arxiv-exact",
+        "text": "2203.11171"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "2203.11171",
+        "title": "Self-consistency improves chain of thought reasoning in language models"
+      },
+      "labelBasis": "reference-arxiv",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+        "page": 0,
+        "referenceNumber": 0,
+        "referenceText": "Wang et al. (2022)\n\nX. Wang, J. Wei, D. Schuurmans, Q. Le, E. Chi, S. Narang, A. Chowdhery, and D. Zhou.\n\nSelf-consistency improves chain of thought reasoning in language models.\n\narXiv preprint arXiv:2203.11171, 2022.",
+        "parsedFields": {
+          "title": "Self-consistency improves chain of thought reasoning in language models",
+          "authors": "Wang et al",
+          "venue": "Wang, J",
+          "year": "2022"
+        }
+      },
+      "citationContext": ""
+    },
+    {
+      "id": "0141f2b1-e958-4822-aad5-ec9229a5abca:noid:eec1eed7",
+      "stratum": "arxiv-reference",
+      "queryKind": "arxiv-exact",
+      "query": {
+        "kind": "arxiv-exact",
+        "text": "2408.08152"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "2408.08152",
+        "title": "Deepseek-prover-v1.5: Harnessing proof assistant feedback for reinforcement learning and monte-carlo tree search,"
+      },
+      "labelBasis": "reference-arxiv",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+        "page": 0,
+        "referenceNumber": 0,
+        "referenceText": "Xin et al. (2024)\n\nH. Xin, Z. Z. Ren, J. Song, Z. Shao, W. Zhao, H. Wang, B. Liu, L. Zhang, X. Lu, Q. Du, W. Gao, Q. Zhu, D. Yang, Z. Gou, Z. F. Wu, F. Luo, and C. Ruan.\n\nDeepseek-prover-v1.5: Harnessing proof assistant feedback for reinforcement learning and monte-carlo tree search, 2024.\n\nURL https://arxiv.org/abs/2408.08152.",
+        "parsedFields": {
+          "title": "Deepseek-prover-v1.5: Harnessing proof assistant feedback for reinforcement learning and monte-carlo tree search,",
+          "authors": "Xin et al",
+          "venue": "Xin, Z",
+          "year": "2024"
+        }
+      },
+      "citationContext": ""
+    },
+    {
+      "id": "0141f2b1-e958-4822-aad5-ec9229a5abca:noid:af5913c5",
+      "stratum": "arxiv-reference",
+      "queryKind": "arxiv-exact",
+      "query": {
+        "kind": "arxiv-exact",
+        "text": "2311.07911"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "2311.07911",
+        "title": "Instruction-following evaluation for large language models"
+      },
+      "labelBasis": "reference-arxiv",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+        "page": 0,
+        "referenceNumber": 0,
+        "referenceText": "Zhou et al. (2023)\n\nJ. Zhou, T. Lu, S. Mishra, S. Brahma, S. Basu, Y. Luan, D. Zhou, and L. Hou.\n\nInstruction-following evaluation for large language models.\n\narXiv preprint arXiv:2311.07911, 2023.",
+        "parsedFields": {
+          "title": "Instruction-following evaluation for large language models",
+          "authors": "Zhou et al",
+          "venue": "Zhou, T",
+          "year": "2023"
+        }
+      },
+      "citationContext": ""
+    },
+    {
+      "id": "10387184-487f-490f-b2ac-163e8e21fc59:8:4a20cb44",
+      "stratum": "arxiv-reference",
+      "queryKind": "arxiv-exact",
+      "query": {
+        "kind": "arxiv-exact",
+        "text": "1409.1556"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "1409.1556",
+        "title": "Very deep convolutional networks for large-scale image recognition"
+      },
+      "labelBasis": "reference-arxiv",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "A Smart AIoT-Based Mobile Application for Plant Disease Detection and Environment Management in Small-Scale Farms Using MobileViT",
+        "page": 18,
+        "referenceNumber": 8,
+        "referenceText": "8. Simonyan, K.; Zisserman, A. Very deep convolutional networks for large-scale image recognition. arXiv 2014, arXiv:1409.1556.",
+        "parsedFields": {
+          "title": "Very deep convolutional networks for large-scale image recognition",
+          "authors": "Simonyan, K.; Zisserman, A",
+          "venue": "arXiv",
+          "year": "2014"
+        }
+      },
+      "citationContext": "Deep learning methods automatically learn relevant features from images in an end-to-end method, thus reducing the need for manual feature engineering and enabling more accurate performance. Convolutional neural networks (CNNs) have long been the standard architecture for image classification tasks. CNNs process input images through a stack of convolutional blocks and pooling layers, enabling them to efficiently capture local features such as textures, edges, and small-scale patterns. Several standard convolution-based architectures exist in the literature including VGGs [8], ResNets [9], and Inceptions [10]."
+    },
+    {
+      "id": "10387184-487f-490f-b2ac-163e8e21fc59:11:c07fc9b8",
+      "stratum": "arxiv-reference",
+      "queryKind": "arxiv-exact",
+      "query": {
+        "kind": "arxiv-exact",
+        "text": "2010.11929"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "2010.11929",
+        "title": "An image is worth 16x16 words: Transformers for image recognition at scale"
+      },
+      "labelBasis": "reference-arxiv",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "A Smart AIoT-Based Mobile Application for Plant Disease Detection and Environment Management in Small-Scale Farms Using MobileViT",
+        "page": 18,
+        "referenceNumber": 11,
+        "referenceText": "11. Dosovitskiy, A.; Beyer, L.; Kolesnikov, A.; Weissenborn, D.; Zhai, X.; Unterthiner, T.; Dehghani, M.; Minderer, M.; Heigold, G.; Gelly, S.; et al. An image is worth 16x16 words: Transformers for image recognition at scale. arXiv 2020, arXiv:2010.11929.",
+        "parsedFields": {
+          "title": "An image is worth 16x16 words: Transformers for image recognition at scale",
+          "authors": "Dosovitskiy, A.; Beyer, L.; Kolesnikov, A.; Weissenborn, D.; Zhai, X.; Unterthiner, T.; Dehghani, M.; Minderer, M.; Heigold, G.; Gelly, S.; et al",
+          "venue": "arXiv",
+          "year": "2010"
+        }
+      },
+      "citationContext": "Recently, vision transformers (ViTs) [11] were introduced for computer vision related tasks as an adaptation of the transformer architectures originally developed for natural language processing (NLP). ViTs split an input image into fixed-size patches that are flattened prior to being processed by the transformer layers. Unlike CNNs which primarily focus on local features, ViTs capture global image dependencies more effectively. Consequently, they are rapidly gaining attention in the computer vision community for solving complex classification tasks [12,13]. Both ViTs and CNNs require large amounts of data for training, which may not always be available in domain-specific applications."
+    },
+    {
+      "id": "10387184-487f-490f-b2ac-163e8e21fc59:25:104a38dc",
+      "stratum": "arxiv-reference",
+      "queryKind": "arxiv-exact",
+      "query": {
+        "kind": "arxiv-exact",
+        "text": "2110.02178"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "2110.02178",
+        "title": "Mobilevit: Light-weight, general-purpose, and mobile-friendly vision transformer"
+      },
+      "labelBasis": "reference-arxiv",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "A Smart AIoT-Based Mobile Application for Plant Disease Detection and Environment Management in Small-Scale Farms Using MobileViT",
+        "page": 18,
+        "referenceNumber": 25,
+        "referenceText": "25. Mehta, S.; Rastegari, M. Mobilevit: Light-weight, general-purpose, and mobile-friendly vision transformer. arXiv 2021, arXiv:2110.02178.",
+        "parsedFields": {
+          "title": "Mobilevit: Light-weight, general-purpose, and mobile-friendly vision transformer",
+          "authors": "Mehta, S.; Rastegari, M",
+          "venue": "arXiv",
+          "year": "2021"
+        }
+      },
+      "citationContext": "MobileViT [25,26] is a lightweight hybrid architecture that combines compact transformer and convolutional blocks for global and local feature extraction, respectively. Mobile-"
+    },
+    {
+      "id": "10387184-487f-490f-b2ac-163e8e21fc59:26:ce976269",
+      "stratum": "arxiv-reference",
+      "queryKind": "arxiv-exact",
+      "query": {
+        "kind": "arxiv-exact",
+        "text": "2206.02680"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "2206.02680",
+        "title": "Separable Self-attention for Mobile Vision Transformers (MobileViTv2)"
+      },
+      "labelBasis": "reference-arxiv",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "A Smart AIoT-Based Mobile Application for Plant Disease Detection and Environment Management in Small-Scale Farms Using MobileViT",
+        "page": 19,
+        "referenceNumber": 26,
+        "referenceText": "26. Mehta, S.; Rastegari, M. Separable Self-attention for Mobile Vision Transformers (MobileViTv2). arXiv 2022, arXiv:2206.02680.",
+        "parsedFields": {
+          "title": "Separable Self-attention for Mobile Vision Transformers (MobileViTv2)",
+          "authors": "Mehta, S.; Rastegari, M",
+          "venue": "arXiv",
+          "year": "2022"
+        }
+      },
+      "citationContext": "MobileViT [25,26] is a lightweight hybrid architecture that combines compact transformer and convolutional blocks for global and local feature extraction, respectively. Mobile-"
+    },
+    {
+      "id": "10387184-487f-490f-b2ac-163e8e21fc59:29:cacfc39b",
+      "stratum": "arxiv-reference",
+      "queryKind": "arxiv-exact",
+      "query": {
+        "kind": "arxiv-exact",
+        "text": "1511.08060"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "1511.08060",
+        "title": "An open access repository of images on plant health to enable the development of mobile disease diagnostics"
+      },
+      "labelBasis": "reference-arxiv",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "A Smart AIoT-Based Mobile Application for Plant Disease Detection and Environment Management in Small-Scale Farms Using MobileViT",
+        "page": 19,
+        "referenceNumber": 29,
+        "referenceText": "29. Hughes, D.; Salathé, M. An open access repository of images on plant health to enable the development of mobile disease diagnostics. arXiv 2015, arXiv:1511.08060.",
+        "parsedFields": {
+          "title": "An open access repository of images on plant health to enable the development of mobile disease diagnostics",
+          "authors": "Hughes, D.; Salathé, M",
+          "venue": "arXiv",
+          "year": "2015"
+        }
+      },
+      "citationContext": "Plant Village [29] is a publicly available benchmark plant disease dataset, originally developed by researchers at Penn State University, USA. It contains over 54,000 healthy and diseased leaf images from 14 plant species, spanning 38 different classes. The plant species include apple, blueberry, cherry, corn, grape, orange, peach, pepper, potato, raspberry, soybean, squash, strawberry, and tomato. For each plant, there is one healthy class and one or more disease classes. For example, apples have three disease classes, whereas tomatoes have nine disease classes. In this work, the Plant Village dataset was obtained from the Kaggle repository [30] and was divided into 70% training, 20% validation, and 10% testing. Figure 2 shows sample images from the Plant Village dataset for the healthy and disease classes."
+    },
+    {
+      "id": "10387184-487f-490f-b2ac-163e8e21fc59:32:02f630c5",
+      "stratum": "arxiv-reference",
+      "queryKind": "arxiv-exact",
+      "query": {
+        "kind": "arxiv-exact",
+        "text": "1704.04861"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "1704.04861",
+        "title": "Mobilenets: Efficient convolutional neural networks for mobile vision applications"
+      },
+      "labelBasis": "reference-arxiv",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "A Smart AIoT-Based Mobile Application for Plant Disease Detection and Environment Management in Small-Scale Farms Using MobileViT",
+        "page": 19,
+        "referenceNumber": 32,
+        "referenceText": "32. Howard, A.G.; Zhu, M.; Chen, B.; Kalenichenko, D.; Wang, W.; Weyand, T.; Andreetto, M.; Adam, H. Mobilenets: Efficient convolutional neural networks for mobile vision applications. arXiv 2017, arXiv:1704.04861. [CrossRef]",
+        "parsedFields": {
+          "title": "Mobilenets: Efficient convolutional neural networks for mobile vision applications",
+          "authors": "Howard, A.G.; Zhu, M.; Chen, B.; Kalenichenko, D.; Wang, W.; Weyand, T.; Andreetto, M.; Adam, H",
+          "venue": "arXiv",
+          "year": "2017"
+        }
+      },
+      "citationContext": "MobileNet [32] is a family of lightweight CNNs designed for resource-constrained devices such as mobile phones and edge devices. The original MobileNetV1 [32] introduced depthwise separable CNNs, significantly reducing the model parameters to less than five million. MobileNetV2 [33] improved upon its predecessor by incorporating inverted residual blocks with linear bottlenecks, enabling further parameter reduction and better feature extraction. MobileNetV1 and MobileNetV2 have 4.3 million and 3.5 million parameters, respectively, which is significantly low compared to other standard CNNs having tens of millions of parameters."
+    },
+    {
+      "id": "10387184-487f-490f-b2ac-163e8e21fc59:39:34f7a096",
+      "stratum": "arxiv-reference",
+      "queryKind": "title_author_year",
+      "query": {
+        "kind": "title_author_year",
+        "text": "LLM-Powered AI Agent Systems and Their Applications in Industry Liang 2025"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "2505.16120",
+        "title": "LLM-Powered AI Agent Systems and Their Applications in Industry"
+      },
+      "labelBasis": "reference-arxiv",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "A Smart AIoT-Based Mobile Application for Plant Disease Detection and Environment Management in Small-Scale Farms Using MobileViT",
+        "page": 19,
+        "referenceNumber": 39,
+        "referenceText": "39. Liang, G.; Tong, Q. LLM-Powered AI Agent Systems and Their Applications in Industry. arXiv 2025, arXiv:2505.16120. [CrossRef]",
+        "parsedFields": {
+          "title": "LLM-Powered AI Agent Systems and Their Applications in Industry",
+          "authors": "Liang, G.; Tong, Q",
+          "venue": "arXiv",
+          "year": "2025"
+        }
+      },
+      "citationContext": "Large language models (LLMs) are built using transformer-based architectures that employ self-attention mechanisms to capture long-range dependencies in text. By leveraging transformer-based architectures trained on massive text corpora, LLMs can understand natural language queries and generate contextually relevant, human-like responses. When embedded in a chatbot interface, these models enable interactive, adaptive, and domain-specific dialogue [38]. LLMs have thus enhanced the capabilities of modern chatbots, making them more engaging and user-friendly compared to traditional rule-based or template-driven methods [39]. With recent advancements in LLM-based chatbots, they have become an integral component of modern smart applications."
+    },
+    {
+      "id": "bfe4b2db-eb97-442b-bb55-ca12bd6e2170:noid:4ef16469",
+      "stratum": "arxiv-reference",
+      "queryKind": "arxiv-exact",
+      "query": {
+        "kind": "arxiv-exact",
+        "text": "2412.08905"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "2412.08905",
+        "title": "Marah Abdin, Jyoti Aneja, Harkirat Behl, Sébastien Bubeck, Ronen Eldan, Suriya Gunasekar, Michael Harrison, Russell J Hewett, Mojan Javaheripi, Piero Kauffmann, et al"
+      },
+      "labelBasis": "reference-arxiv",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "Riddle Me This! Stealthy Membership Inference for Retrieval-Augmented Generation",
+        "page": 0,
+        "referenceNumber": 0,
+        "referenceText": "Abdin et al. (2024)\n\nMarah Abdin, Jyoti Aneja, Harkirat Behl, Sébastien Bubeck, Ronen Eldan, Suriya Gunasekar, Michael Harrison, Russell J Hewett, Mojan Javaheripi, Piero Kauffmann, et al. 2024.\n\nPhi-4 technical report.\n\narXiv preprint arXiv:2412.08905 (2024).",
+        "parsedFields": {
+          "title": "Marah Abdin, Jyoti Aneja, Harkirat Behl, Sébastien Bubeck, Ronen Eldan, Suriya Gunasekar, Michael Harrison, Russell J Hewett, Mojan Javaheripi, Piero Kauffmann, et al",
+          "authors": "Abdin et al",
+          "venue": "2024",
+          "year": "2024"
+        }
+      },
+      "citationContext": ""
+    },
+    {
+      "id": "bfe4b2db-eb97-442b-bb55-ca12bd6e2170:noid:8480fa66",
+      "stratum": "arxiv-reference",
+      "queryKind": "arxiv-exact",
+      "query": {
+        "kind": "arxiv-exact",
+        "text": "2405.20446"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "2405.20446",
+        "title": "Is My Data in Your Retrieval Database? Membership Inference Attacks Against Retrieval Augmented Generation"
+      },
+      "labelBasis": "reference-arxiv",
+      "reviewStatus": "identifier-verified",
+      "source": {
+        "paperTitle": "Riddle Me This! Stealthy Membership Inference for Retrieval-Augmented Generation",
+        "page": 0,
+        "referenceNumber": 0,
+        "referenceText": "Anderson et al. (2024)\n\nMaya Anderson, Guy Amit, and Abigail Goldsteen. 2024.\n\nIs My Data in Your Retrieval Database? Membership Inference Attacks Against Retrieval Augmented Generation.\n\narXiv preprint arXiv:2405.20446 (2024).",
+        "parsedFields": {
+          "title": "Is My Data in Your Retrieval Database? Membership Inference Attacks Against Retrieval Augmented Generation",
+          "authors": "Anderson et al",
+          "venue": "2024",
+          "year": "2024"
+        }
+      },
+      "citationContext": ""
+    },
+    {
+      "id": "0141f2b1-e958-4822-aad5-ec9229a5abca:noid:40db93d9",
+      "stratum": "title-only-reference",
+      "queryKind": "title",
+      "query": {
+        "kind": "title",
+        "text": "ZeroEval: A Unified Framework for Evaluating Language Models, July"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "",
+        "title": "ZeroEval: A Unified Framework for Evaluating Language Models, July"
+      },
+      "labelBasis": "reference-text-title",
+      "reviewStatus": "auto-needs-review",
+      "source": {
+        "paperTitle": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+        "page": 0,
+        "referenceNumber": 0,
+        "referenceText": "Lin (2024)\n\nB. Y. Lin.\n\nZeroEval: A Unified Framework for Evaluating Language Models, July 2024.\n\nURL https://github.com/WildEval/ZeroEval.",
+        "parsedFields": {
+          "title": "ZeroEval: A Unified Framework for Evaluating Language Models, July",
+          "authors": "Lin",
+          "venue": "Y",
+          "year": "2024"
+        }
+      },
+      "citationContext": ""
+    },
+    {
+      "id": "0141f2b1-e958-4822-aad5-ec9229a5abca:noid:2c621b36",
+      "stratum": "title-only-reference",
+      "queryKind": "title_venue_year",
+      "query": {
+        "kind": "title_venue_year",
+        "text": "In American Invitational Mathematics Examination - AIME American invitational mathematics examination - aime 2024"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "",
+        "title": "In American Invitational Mathematics Examination - AIME"
+      },
+      "labelBasis": "reference-text-title",
+      "reviewStatus": "auto-needs-review",
+      "source": {
+        "paperTitle": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+        "page": 0,
+        "referenceNumber": 0,
+        "referenceText": "MAA (2024)\n\nMAA.\n\nAmerican invitational mathematics examination - aime.\n\nIn American Invitational Mathematics Examination - AIME 2024, February 2024.\n\nURL https://maa.org/math-competitions/american-invitational-mathematics-examination-aime.",
+        "parsedFields": {
+          "title": "In American Invitational Mathematics Examination - AIME",
+          "authors": "MAA",
+          "venue": "American invitational mathematics examination - aime",
+          "year": "2024"
+        }
+      },
+      "citationContext": ""
+    },
+    {
+      "id": "0141f2b1-e958-4822-aad5-ec9229a5abca:noid:80036e33",
+      "stratum": "title-only-reference",
+      "queryKind": "title_venue_year",
+      "query": {
+        "kind": "title_venue_year",
+        "text": "Agentless: Demystifying llm-based software engineering agents S 2024"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "",
+        "title": "Agentless: Demystifying llm-based software engineering agents"
+      },
+      "labelBasis": "reference-text-title",
+      "reviewStatus": "auto-needs-review",
+      "source": {
+        "paperTitle": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+        "page": 0,
+        "referenceNumber": 0,
+        "referenceText": "Xia et al. (2024)\n\nC. S. Xia, Y. Deng, S. Dunn, and L. Zhang.\n\nAgentless: Demystifying llm-based software engineering agents.\n\narXiv preprint, 2024.",
+        "parsedFields": {
+          "title": "Agentless: Demystifying llm-based software engineering agents",
+          "authors": "Xia et al",
+          "venue": "S",
+          "year": "2024"
+        }
+      },
+      "citationContext": ""
+    },
+    {
+      "id": "09e46829-e5af-42ff-a514-6cf07889011f:2:59a15172",
+      "stratum": "title-only-reference",
+      "queryKind": "author_venue_year",
+      "query": {
+        "kind": "author_venue_year",
+        "text": "Alsobhi Syst 2018"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "",
+        "title": "Analysis of damage costs in supply chain systems"
+      },
+      "labelBasis": "reference-text-title",
+      "reviewStatus": "auto-needs-review",
+      "source": {
+        "paperTitle": "Smart Sticker Ultra-Low-Power Shock Detection in the Supply Chain",
+        "page": 20,
+        "referenceNumber": 2,
+        "referenceText": "2. Alsobhi, S.A.; Krishnan, K.K.; Gupta, D.; Almaktoom, A.T. Analysis of damage costs in supply chain systems. Int. J. Ind. Syst. Eng. 2018, 28, 70–98. [CrossRef]",
+        "parsedFields": {
+          "title": "Analysis of damage costs in supply chain systems",
+          "authors": "Alsobhi, S.A.; Krishnan, K.K.; Gupta, D.; Almaktoom, A.T",
+          "venue": "Syst",
+          "year": "2018"
+        }
+      },
+      "citationContext": "The supply chain is a vast and complex process that consists of several stages. The main stages include transportation, warehousing, inventory, packaging, information, and control. Packaged products in the supply chain bear a particular risk of physical damage owing to different hazards that include shocks, vibrations, temperature, humidity, light, and pressure [1–3]. An embedded system must measure, process, and record the necessary data to monitor the possibility of hazard events. Recorded data must be available to the consumer ondemand. Depending on product type in the supply chain, different hazardous events are important to the consumer for monitoring. Usually, embedded systems are applied to solve the proposed tasks. Subsequently, the embedded system must satisfy different constraints: the long lifespan of the device battery, energy harvesting, small physical size, price, the size "
+    },
+    {
+      "id": "09e46829-e5af-42ff-a514-6cf07889011f:4:fbc0a492",
+      "stratum": "title-only-reference",
+      "queryKind": "title",
+      "query": {
+        "kind": "title",
+        "text": "Smart Sticker: Concept for Better Storage and Transportation"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "",
+        "title": "Smart Sticker: Concept for Better Storage and Transportation"
+      },
+      "labelBasis": "reference-text-title",
+      "reviewStatus": "auto-needs-review",
+      "source": {
+        "paperTitle": "Smart Sticker Ultra-Low-Power Shock Detection in the Supply Chain",
+        "page": 20,
+        "referenceNumber": 4,
+        "referenceText": "4. Sušac, F.; Matic´, T.; Vidovic´, I.; Aleksi, I.; Hocenski, Ž. Smart Sticker: Concept for Better Storage and Transportation. In Proceedings of the 2020 International Conference on Smart Systems and Technologies (SST), Osijek, Croatia, 14–16 October 2020; pp. 121–126. [CrossRef]",
+        "parsedFields": {
+          "title": "Smart Sticker: Concept for Better Storage and Transportation",
+          "authors": "Sušac, F.; Matic´, T.; Vidovic´, I.; Aleksi, I.; Hocenski, Ž",
+          "venue": "In Proceedings of the 2020 International Conference on Smart Systems and Technologies (SST), Osijek, Croatia,",
+          "year": "2020"
+        }
+      },
+      "citationContext": "The supply chain is a vast and complex process that consists of several stages. The main stages include transportation, warehousing, inventory, packaging, information, and control. Packaged products in the supply chain bear a particular risk of physical damage owing to different hazards that include shocks, vibrations, temperature, humidity, light, and pressure [1–3]. An embedded system must measure, process, and record the necessary data to monitor the possibility of hazard events. Recorded data must be available to the consumer ondemand. Depending on product type in the supply chain, different hazardous events are important to the consumer for monitoring. Usually, embedded systems are applied to solve the proposed tasks. Subsequently, the embedded system must satisfy different constraints: the long lifespan of the device battery, energy harvesting, small physical size, price, the size "
+    },
+    {
+      "id": "09e46829-e5af-42ff-a514-6cf07889011f:5:24d024a7",
+      "stratum": "title-only-reference",
+      "queryKind": "author_venue_year",
+      "query": {
+        "kind": "author_venue_year",
+        "text": "Zidar In Proceedings of the 2021 44th International Convention on Information, Communication and Electronic Technology (MIPRO), Opatija, Croatia, 27 September–1 October 2021; pp 2021"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "",
+        "title": "Ultra-Low Power Microcontroller Selection for Smart Sticker Design"
+      },
+      "labelBasis": "reference-text-title",
+      "reviewStatus": "auto-needs-review",
+      "source": {
+        "paperTitle": "Smart Sticker Ultra-Low-Power Shock Detection in the Supply Chain",
+        "page": 20,
+        "referenceNumber": 5,
+        "referenceText": "5. Zidar, J.; Matic´, T.; Sušac, F.; Aleksi, I. Ultra-Low Power Microcontroller Selection for Smart Sticker Design. In Proceedings of the 2021 44th International Convention on Information, Communication and Electronic Technology (MIPRO), Opatija, Croatia, 27 September–1 October 2021; pp. 892–895. [CrossRef]",
+        "parsedFields": {
+          "title": "Ultra-Low Power Microcontroller Selection for Smart Sticker Design",
+          "authors": "Zidar, J.; Matic´, T.; Sušac, F.; Aleksi, I",
+          "venue": "In Proceedings of the 2021 44th International Convention on Information, Communication and Electronic Technology (MIPRO), Opatija, Croatia, 27 September–1 October 2021; pp",
+          "year": "2021"
+        }
+      },
+      "citationContext": "The supply chain is a vast and complex process that consists of several stages. The main stages include transportation, warehousing, inventory, packaging, information, and control. Packaged products in the supply chain bear a particular risk of physical damage owing to different hazards that include shocks, vibrations, temperature, humidity, light, and pressure [1–3]. An embedded system must measure, process, and record the necessary data to monitor the possibility of hazard events. Recorded data must be available to the consumer ondemand. Depending on product type in the supply chain, different hazardous events are important to the consumer for monitoring. Usually, embedded systems are applied to solve the proposed tasks. Subsequently, the embedded system must satisfy different constraints: the long lifespan of the device battery, energy harvesting, small physical size, price, the size "
+    },
+    {
+      "id": "09e46829-e5af-42ff-a514-6cf07889011f:6:5ff60c48",
+      "stratum": "title-only-reference",
+      "queryKind": "title_author_year",
+      "query": {
+        "kind": "title_author_year",
+        "text": "Low Power Embedded System Sensor Selection for Environmental Condition Monitoring in Supply Chain Zidar 2022"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "",
+        "title": "Low Power Embedded System Sensor Selection for Environmental Condition Monitoring in Supply Chain"
+      },
+      "labelBasis": "reference-text-title",
+      "reviewStatus": "auto-needs-review",
+      "source": {
+        "paperTitle": "Smart Sticker Ultra-Low-Power Shock Detection in the Supply Chain",
+        "page": 20,
+        "referenceNumber": 6,
+        "referenceText": "6. Zidar, J.; Matic´, T.; Aleksi, I.; Sušac, F. Low Power Embedded System Sensor Selection for Environmental Condition Monitoring in Supply Chain. Int. J. Electr. Comput. Eng. Syst. 2022, 13, 99–107. [CrossRef]",
+        "parsedFields": {
+          "title": "Low Power Embedded System Sensor Selection for Environmental Condition Monitoring in Supply Chain",
+          "authors": "Zidar, J.; Matic´, T.; Aleksi, I.; Sušac, F",
+          "venue": "Electr",
+          "year": "2022"
+        }
+      },
+      "citationContext": "The supply chain is a vast and complex process that consists of several stages. The main stages include transportation, warehousing, inventory, packaging, information, and control. Packaged products in the supply chain bear a particular risk of physical damage owing to different hazards that include shocks, vibrations, temperature, humidity, light, and pressure [1–3]. An embedded system must measure, process, and record the necessary data to monitor the possibility of hazard events. Recorded data must be available to the consumer ondemand. Depending on product type in the supply chain, different hazardous events are important to the consumer for monitoring. Usually, embedded systems are applied to solve the proposed tasks. Subsequently, the embedded system must satisfy different constraints: the long lifespan of the device battery, energy harvesting, small physical size, price, the size "
+    },
+    {
+      "id": "09e46829-e5af-42ff-a514-6cf07889011f:9:bce54af2",
+      "stratum": "title-only-reference",
+      "queryKind": "author_venue_year",
+      "query": {
+        "kind": "author_venue_year",
+        "text": "Bernad Packag 2010"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "",
+        "title": "Dynamic study of stacked packaging units by operational modal analysis"
+      },
+      "labelBasis": "reference-text-title",
+      "reviewStatus": "auto-needs-review",
+      "source": {
+        "paperTitle": "Smart Sticker Ultra-Low-Power Shock Detection in the Supply Chain",
+        "page": 20,
+        "referenceNumber": 9,
+        "referenceText": "9. Bernad, C.; Laspalas, A.; González, D.; Liarte, E.; Jiménez, M.A. Dynamic study of stacked packaging units by operational modal analysis. Packag. Technol. Sci. 2010, 23, 121–133. [CrossRef]",
+        "parsedFields": {
+          "title": "Dynamic study of stacked packaging units by operational modal analysis",
+          "authors": "Bernad, C.; Laspalas, A.; González, D.; Liarte, E.; Jiménez, M.A",
+          "venue": "Packag",
+          "year": "2010"
+        }
+      },
+      "citationContext": "method for storage and transportation. Handling large pallets of stacked product boxes leads to more frequent product damage caused by vibrations (imbalance in the load, irregular surfaces) and shocks (falls, drops) during handling and transportation [7]. To investigate this problem, authors in [8–10] use different simulation techniques to analyze possible vibrations and shock damage of a particular product. Additionally, several standards are defined for packaging materials to prevent or reduce the damage caused by different hazards. Standards describe the procedure and apparatus for testing the packaging material. The most commonly employed standards are those by the American Society for Testing and Materials, e.g., [11], and the International Organization for Standardization, e.g., [12,13]. Furthermore, the effects of vibrations and shock are related to energy that can cause product d"
+    },
+    {
+      "id": "09e46829-e5af-42ff-a514-6cf07889011f:10:ae00038b",
+      "stratum": "title-only-reference",
+      "queryKind": "title_venue_year",
+      "query": {
+        "kind": "title_venue_year",
+        "text": "Effect of Truck Vibration during Transport on Damage to Fresh Produce Shipments in Thailand Appl 2009"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "",
+        "title": "Effect of Truck Vibration during Transport on Damage to Fresh Produce Shipments in Thailand"
+      },
+      "labelBasis": "reference-text-title",
+      "reviewStatus": "auto-needs-review",
+      "source": {
+        "paperTitle": "Smart Sticker Ultra-Low-Power Shock Detection in the Supply Chain",
+        "page": 20,
+        "referenceNumber": 10,
+        "referenceText": "10. Chonhenchob, V.; Sittipod, S.; Swasdee, D.; Rachtanapun, P.; Singh, S.; Singh, J. Effect of Truck Vibration during Transport on Damage to Fresh Produce Shipments in Thailand. J. Appl. Packag. Res. 2009, 3, 27.",
+        "parsedFields": {
+          "title": "Effect of Truck Vibration during Transport on Damage to Fresh Produce Shipments in Thailand",
+          "authors": "Chonhenchob, V.; Sittipod, S.; Swasdee, D.; Rachtanapun, P.; Singh, S.; Singh, J",
+          "venue": "Appl",
+          "year": "2009"
+        }
+      },
+      "citationContext": "method for storage and transportation. Handling large pallets of stacked product boxes leads to more frequent product damage caused by vibrations (imbalance in the load, irregular surfaces) and shocks (falls, drops) during handling and transportation [7]. To investigate this problem, authors in [8–10] use different simulation techniques to analyze possible vibrations and shock damage of a particular product. Additionally, several standards are defined for packaging materials to prevent or reduce the damage caused by different hazards. Standards describe the procedure and apparatus for testing the packaging material. The most commonly employed standards are those by the American Society for Testing and Materials, e.g., [11], and the International Organization for Standardization, e.g., [12,13]. Furthermore, the effects of vibrations and shock are related to energy that can cause product d"
+    },
+    {
+      "id": "09e46829-e5af-42ff-a514-6cf07889011f:14:65827338",
+      "stratum": "title-only-reference",
+      "queryKind": "title_venue_year",
+      "query": {
+        "kind": "title_venue_year",
+        "text": "Measurement and evaluation of the effect of vibration on fruits in transit—Review Packag 2018"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "",
+        "title": "Measurement and evaluation of the effect of vibration on fruits in transit—Review"
+      },
+      "labelBasis": "reference-text-title",
+      "reviewStatus": "auto-needs-review",
+      "source": {
+        "paperTitle": "Smart Sticker Ultra-Low-Power Shock Detection in the Supply Chain",
+        "page": 20,
+        "referenceNumber": 14,
+        "referenceText": "14. Fernando, I.; Fei, J.; Stanley, R.; Enshaei, H. Measurement and evaluation of the effect of vibration on fruits in transit—Review. Packag. Technol. Sci. 2018, 31, 723–738. [CrossRef]",
+        "parsedFields": {
+          "title": "Measurement and evaluation of the effect of vibration on fruits in transit—Review",
+          "authors": "Fernando, I.; Fei, J.; Stanley, R.; Enshaei, H",
+          "venue": "Packag",
+          "year": "2018"
+        }
+      },
+      "citationContext": "method for storage and transportation. Handling large pallets of stacked product boxes leads to more frequent product damage caused by vibrations (imbalance in the load, irregular surfaces) and shocks (falls, drops) during handling and transportation [7]. To investigate this problem, authors in [8–10] use different simulation techniques to analyze possible vibrations and shock damage of a particular product. Additionally, several standards are defined for packaging materials to prevent or reduce the damage caused by different hazards. Standards describe the procedure and apparatus for testing the packaging material. The most commonly employed standards are those by the American Society for Testing and Materials, e.g., [11], and the International Organization for Standardization, e.g., [12,13]. Furthermore, the effects of vibrations and shock are related to energy that can cause product d"
+    },
+    {
+      "id": "09e46829-e5af-42ff-a514-6cf07889011f:15:f2ed7fff",
+      "stratum": "title-only-reference",
+      "queryKind": "title",
+      "query": {
+        "kind": "title",
+        "text": "Improving Efficiency of RFID-based Traceability System for Perishable Food by Utilizing IoT Sensors and Machine Learning Model"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "",
+        "title": "Improving Efficiency of RFID-based Traceability System for Perishable Food by Utilizing IoT Sensors and Machine Learning Model"
+      },
+      "labelBasis": "reference-text-title",
+      "reviewStatus": "auto-needs-review",
+      "source": {
+        "paperTitle": "Smart Sticker Ultra-Low-Power Shock Detection in the Supply Chain",
+        "page": 20,
+        "referenceNumber": 15,
+        "referenceText": "15. Alfian, G.; Syafrudin, M.; Farooq, U.; Ma’arif, M.; Syaekhoni, A.; Fitriyani, N.; Lee, J.; Rhee, J. Improving Efficiency of RFID-based Traceability System for Perishable Food by Utilizing IoT Sensors and Machine Learning Model. Food Control 2020, 110, 107016. [CrossRef]",
+        "parsedFields": {
+          "title": "Improving Efficiency of RFID-based Traceability System for Perishable Food by Utilizing IoT Sensors and Machine Learning Model",
+          "authors": "Alfian, G.; Syafrudin, M.; Farooq, U.; Ma’arif, M.; Syaekhoni, A.; Fitriyani, N.; Lee, J.; Rhee, J",
+          "venue": "Food Control",
+          "year": "2020"
+        }
+      },
+      "citationContext": "Several authors have proposed devices for environmental condition monitoring. In [15], authors present an IoT system based on RFID technology with temperature and humidity sensors. The system is utilized to trace perishable food in the supply chain. The proposed device is based on the Raspberry Pi system. However, it does not meet low-power requirements and has small dimensions. Authors in [16] proposed an RFID tag for its “info tracing system”. The RFID tags are used to identify the cheese on which quality analyses are performed. No real-time information about the environmental conditions of the product is processed with the proposed device. Consumers can obtain information about the cheese quality from a developed web-based system. Authors in [17] presented an embedded system based on the MSP430F microcontroller from Texas Instruments, where an RFID 13.56 MHz transponder and several se"
+    },
+    {
+      "id": "09e46829-e5af-42ff-a514-6cf07889011f:16:e78032aa",
+      "stratum": "title-only-reference",
+      "queryKind": "title",
+      "query": {
+        "kind": "title",
+        "text": "A RFID web-based infotracing system for the artisanal Italian cheese quality traceability"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "",
+        "title": "A RFID web-based infotracing system for the artisanal Italian cheese quality traceability"
+      },
+      "labelBasis": "reference-text-title",
+      "reviewStatus": "auto-needs-review",
+      "source": {
+        "paperTitle": "Smart Sticker Ultra-Low-Power Shock Detection in the Supply Chain",
+        "page": 20,
+        "referenceNumber": 16,
+        "referenceText": "16. Papetti, P.; Costa, C.; Antonucci, F.; Figorilli, S.; Solaini, S.; Menesatti, P. A RFID web-based infotracing system for the artisanal Italian cheese quality traceability. Food Control 2012, 27, 234–241. [CrossRef]",
+        "parsedFields": {
+          "title": "A RFID web-based infotracing system for the artisanal Italian cheese quality traceability",
+          "authors": "Papetti, P.; Costa, C.; Antonucci, F.; Figorilli, S.; Solaini, S.; Menesatti, P",
+          "venue": "Food Control",
+          "year": "2012"
+        }
+      },
+      "citationContext": "Several authors have proposed devices for environmental condition monitoring. In [15], authors present an IoT system based on RFID technology with temperature and humidity sensors. The system is utilized to trace perishable food in the supply chain. The proposed device is based on the Raspberry Pi system. However, it does not meet low-power requirements and has small dimensions. Authors in [16] proposed an RFID tag for its “info tracing system”. The RFID tags are used to identify the cheese on which quality analyses are performed. No real-time information about the environmental conditions of the product is processed with the proposed device. Consumers can obtain information about the cheese quality from a developed web-based system. Authors in [17] presented an embedded system based on the MSP430F microcontroller from Texas Instruments, where an RFID 13.56 MHz transponder and several se"
+    },
+    {
+      "id": "09e46829-e5af-42ff-a514-6cf07889011f:17:5cabb5ca",
+      "stratum": "title-only-reference",
+      "queryKind": "title",
+      "query": {
+        "kind": "title",
+        "text": "RFID smart tag for traceability and cold chain monitoring of foods: Demonstration in an intercontinental fresh fish logistic chain"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "",
+        "title": "RFID smart tag for traceability and cold chain monitoring of foods: Demonstration in an intercontinental fresh fish logistic chain"
+      },
+      "labelBasis": "reference-text-title",
+      "reviewStatus": "auto-needs-review",
+      "source": {
+        "paperTitle": "Smart Sticker Ultra-Low-Power Shock Detection in the Supply Chain",
+        "page": 20,
+        "referenceNumber": 17,
+        "referenceText": "17. Abad, E.; Palacio, F.; Nuin, M.; Zárate, A.G.D.; Juarros, A.; Gómez, J.; Marco, S. RFID smart tag for traceability and cold chain monitoring of foods: Demonstration in an intercontinental fresh fish logistic chain. J. Food Eng. 2009, 93, 394–399. [CrossRef]",
+        "parsedFields": {
+          "title": "RFID smart tag for traceability and cold chain monitoring of foods: Demonstration in an intercontinental fresh fish logistic chain",
+          "authors": "Abad, E.; Palacio, F.; Nuin, M.; Zárate, A.G.D.; Juarros, A.; Gómez, J.; Marco, S",
+          "venue": "Food Eng",
+          "year": "2009"
+        }
+      },
+      "citationContext": "Several authors have proposed devices for environmental condition monitoring. In [15], authors present an IoT system based on RFID technology with temperature and humidity sensors. The system is utilized to trace perishable food in the supply chain. The proposed device is based on the Raspberry Pi system. However, it does not meet low-power requirements and has small dimensions. Authors in [16] proposed an RFID tag for its “info tracing system”. The RFID tags are used to identify the cheese on which quality analyses are performed. No real-time information about the environmental conditions of the product is processed with the proposed device. Consumers can obtain information about the cheese quality from a developed web-based system. Authors in [17] presented an embedded system based on the MSP430F microcontroller from Texas Instruments, where an RFID 13.56 MHz transponder and several se"
+    },
+    {
+      "id": "09e46829-e5af-42ff-a514-6cf07889011f:18:0049c909",
+      "stratum": "title-only-reference",
+      "queryKind": "title_venue_year",
+      "query": {
+        "kind": "title_venue_year",
+        "text": "Integration of RFID, wireless sensor networks, and data mining in an e-pedigree food traceability system Food Eng 2017"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "",
+        "title": "Integration of RFID, wireless sensor networks, and data mining in an e-pedigree food traceability system"
+      },
+      "labelBasis": "reference-text-title",
+      "reviewStatus": "auto-needs-review",
+      "source": {
+        "paperTitle": "Smart Sticker Ultra-Low-Power Shock Detection in the Supply Chain",
+        "page": 20,
+        "referenceNumber": 18,
+        "referenceText": "18. Alfian, G.; Rhee, J.; Ahn, H.; Lee, J.; Farooq, U.; Ijaz, M.F.; Syaekhoni, M.A. Integration of RFID, wireless sensor networks, and data mining in an e-pedigree food traceability system. J. Food Eng. 2017, 212, 65–75. [CrossRef]",
+        "parsedFields": {
+          "title": "Integration of RFID, wireless sensor networks, and data mining in an e-pedigree food traceability system",
+          "authors": "Alfian, G.; Rhee, J.; Ahn, H.; Lee, J.; Farooq, U.; Ijaz, M.F.; Syaekhoni, M.A",
+          "venue": "Food Eng",
+          "year": "2017"
+        }
+      },
+      "citationContext": "Several authors have proposed devices for environmental condition monitoring. In [15], authors present an IoT system based on RFID technology with temperature and humidity sensors. The system is utilized to trace perishable food in the supply chain. The proposed device is based on the Raspberry Pi system. However, it does not meet low-power requirements and has small dimensions. Authors in [16] proposed an RFID tag for its “info tracing system”. The RFID tags are used to identify the cheese on which quality analyses are performed. No real-time information about the environmental conditions of the product is processed with the proposed device. Consumers can obtain information about the cheese quality from a developed web-based system. Authors in [17] presented an embedded system based on the MSP430F microcontroller from Texas Instruments, where an RFID 13.56 MHz transponder and several se"
+    },
+    {
+      "id": "09e46829-e5af-42ff-a514-6cf07889011f:19:1a2daa65",
+      "stratum": "title-only-reference",
+      "queryKind": "title",
+      "query": {
+        "kind": "title",
+        "text": "Novel, smart and RFID assisted critical temperature indicator for supply chain monitoring"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "",
+        "title": "Novel, smart and RFID assisted critical temperature indicator for supply chain monitoring"
+      },
+      "labelBasis": "reference-text-title",
+      "reviewStatus": "auto-needs-review",
+      "source": {
+        "paperTitle": "Smart Sticker Ultra-Low-Power Shock Detection in the Supply Chain",
+        "page": 20,
+        "referenceNumber": 19,
+        "referenceText": "19. Lorite, G.S.; Selkälä, T.; Sipola, T.; Palenzuela, J.; Jubete, E.; Viñuales, A.; Cabañero, G.; Grande, H.J.; Tuominen, J.; Uusitalo, S.; et al. Novel, smart and RFID assisted critical temperature indicator for supply chain monitoring. J. Food Eng. 2017, 193, 20–28. [CrossRef]",
+        "parsedFields": {
+          "title": "Novel, smart and RFID assisted critical temperature indicator for supply chain monitoring",
+          "authors": "Lorite, G.S.; Selkälä, T.; Sipola, T.; Palenzuela, J.; Jubete, E.; Viñuales, A.; Cabañero, G.; Grande, H.J.; Tuominen, J.; Uusitalo, S.; et al",
+          "venue": "Food Eng",
+          "year": "2017"
+        }
+      },
+      "citationContext": "Several authors have proposed devices for environmental condition monitoring. In [15], authors present an IoT system based on RFID technology with temperature and humidity sensors. The system is utilized to trace perishable food in the supply chain. The proposed device is based on the Raspberry Pi system. However, it does not meet low-power requirements and has small dimensions. Authors in [16] proposed an RFID tag for its “info tracing system”. The RFID tags are used to identify the cheese on which quality analyses are performed. No real-time information about the environmental conditions of the product is processed with the proposed device. Consumers can obtain information about the cheese quality from a developed web-based system. Authors in [17] presented an embedded system based on the MSP430F microcontroller from Texas Instruments, where an RFID 13.56 MHz transponder and several se"
+    },
+    {
+      "id": "09e46829-e5af-42ff-a514-6cf07889011f:20:42149ed2",
+      "stratum": "title-only-reference",
+      "queryKind": "author_venue_year",
+      "query": {
+        "kind": "author_venue_year",
+        "text": "2022"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "",
+        "title": "DB Schenker Smartbox"
+      },
+      "labelBasis": "reference-text-title",
+      "reviewStatus": "auto-needs-review",
+      "source": {
+        "paperTitle": "Smart Sticker Ultra-Low-Power Shock Detection in the Supply Chain",
+        "page": 20,
+        "referenceNumber": 20,
+        "referenceText": "20. DB Schenker Smartbox. Available online: https://www.dbschenker.com/de-en/products/sensor-technology (accessed on 21 April 2022).",
+        "parsedFields": {
+          "title": "DB Schenker Smartbox",
+          "authors": "",
+          "venue": "",
+          "year": "2022"
+        }
+      },
+      "citationContext": "Several authors have proposed devices for environmental condition monitoring. In [15], authors present an IoT system based on RFID technology with temperature and humidity sensors. The system is utilized to trace perishable food in the supply chain. The proposed device is based on the Raspberry Pi system. However, it does not meet low-power requirements and has small dimensions. Authors in [16] proposed an RFID tag for its “info tracing system”. The RFID tags are used to identify the cheese on which quality analyses are performed. No real-time information about the environmental conditions of the product is processed with the proposed device. Consumers can obtain information about the cheese quality from a developed web-based system. Authors in [17] presented an embedded system based on the MSP430F microcontroller from Texas Instruments, where an RFID 13.56 MHz transponder and several se"
+    },
+    {
+      "id": "09e46829-e5af-42ff-a514-6cf07889011f:22:6e6fb25d",
+      "stratum": "title-only-reference",
+      "queryKind": "title_author_year",
+      "query": {
+        "kind": "title_author_year",
+        "text": "Susceptibility of apples to bruising inside ventilated corrugated paperboard packages during simulated transport damage Fadiji 2016"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "",
+        "title": "Susceptibility of apples to bruising inside ventilated corrugated paperboard packages during simulated transport damage"
+      },
+      "labelBasis": "reference-text-title",
+      "reviewStatus": "auto-needs-review",
+      "source": {
+        "paperTitle": "Smart Sticker Ultra-Low-Power Shock Detection in the Supply Chain",
+        "page": 21,
+        "referenceNumber": 22,
+        "referenceText": "22. Fadiji, T.; Coetzee, C.; Chen, L.; Chukwu, O.; Opara, U.L. Susceptibility of apples to bruising inside ventilated corrugated paperboard packages during simulated transport damage. Postharvest Biol. Technol. 2016, 118, 111–119. [CrossRef]",
+        "parsedFields": {
+          "title": "Susceptibility of apples to bruising inside ventilated corrugated paperboard packages during simulated transport damage",
+          "authors": "Fadiji, T.; Coetzee, C.; Chen, L.; Chukwu, O.; Opara, U.L",
+          "venue": "Postharvest Biol",
+          "year": "2016"
+        }
+      },
+      "citationContext": "track and monitor cargo conditions. The hardware specifications are not given, and it is unavailable for use outside the DB Schenker system. In [14], authors provide a review on the topic of stacked fruit in transit that is damaged by vibrations. The authors intended to reduce fruit quality deterioration caused by vibrations in the range of 0 to 10Hz. Additionally, the authors proposed using simulation approaches to minimize the possible damage. In [21], the authors examined using alternative ecologically-friendly materials while lowering packing costs to protect objects from shock during transit and handling. The goal was to lower the amount of material utilized while enhancing the strength of the material. The shock sensor is coupled to a weight dropped on the tested package. A force of 1 g was applied to 10 different packaging materials. In recent years, different simulation technique"
+    },
+    {
+      "id": "09e46829-e5af-42ff-a514-6cf07889011f:23:3b248d97",
+      "stratum": "title-only-reference",
+      "queryKind": "author_venue_year",
+      "query": {
+        "kind": "author_venue_year",
+        "text": "Shahbazi Agric 2010"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "",
+        "title": "Simulated In-transit Vibration Damage to Watermelons"
+      },
+      "labelBasis": "reference-text-title",
+      "reviewStatus": "auto-needs-review",
+      "source": {
+        "paperTitle": "Smart Sticker Ultra-Low-Power Shock Detection in the Supply Chain",
+        "page": 21,
+        "referenceNumber": 23,
+        "referenceText": "23. Shahbazi, F.; Rajabipour, A.; Mohtasebi, S.; Rafie, S. Simulated In-transit Vibration Damage to Watermelons. J. Agric. Sci. Technol. 2010, 12, 23–34.",
+        "parsedFields": {
+          "title": "Simulated In-transit Vibration Damage to Watermelons",
+          "authors": "Shahbazi, F.; Rajabipour, A.; Mohtasebi, S.; Rafie, S",
+          "venue": "Agric",
+          "year": "2010"
+        }
+      },
+      "citationContext": "track and monitor cargo conditions. The hardware specifications are not given, and it is unavailable for use outside the DB Schenker system. In [14], authors provide a review on the topic of stacked fruit in transit that is damaged by vibrations. The authors intended to reduce fruit quality deterioration caused by vibrations in the range of 0 to 10Hz. Additionally, the authors proposed using simulation approaches to minimize the possible damage. In [21], the authors examined using alternative ecologically-friendly materials while lowering packing costs to protect objects from shock during transit and handling. The goal was to lower the amount of material utilized while enhancing the strength of the material. The shock sensor is coupled to a weight dropped on the tested package. A force of 1 g was applied to 10 different packaging materials. In recent years, different simulation technique"
+    },
+    {
+      "id": "09e46829-e5af-42ff-a514-6cf07889011f:24:1e648866",
+      "stratum": "title-only-reference",
+      "queryKind": "title_venue_year",
+      "query": {
+        "kind": "title_venue_year",
+        "text": "Design and Analysis of Cushioning Packaging for Home Appliances Procedia Eng 2017"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "",
+        "title": "Design and Analysis of Cushioning Packaging for Home Appliances"
+      },
+      "labelBasis": "reference-text-title",
+      "reviewStatus": "auto-needs-review",
+      "source": {
+        "paperTitle": "Smart Sticker Ultra-Low-Power Shock Detection in the Supply Chain",
+        "page": 21,
+        "referenceNumber": 24,
+        "referenceText": "24. Kun, G.; Xi, W. Design and Analysis of Cushioning Packaging for Home Appliances. Procedia Eng. 2017, 174, 904–909. [CrossRef]",
+        "parsedFields": {
+          "title": "Design and Analysis of Cushioning Packaging for Home Appliances",
+          "authors": "Kun, G.; Xi, W",
+          "venue": "Procedia Eng",
+          "year": "2017"
+        }
+      },
+      "citationContext": "track and monitor cargo conditions. The hardware specifications are not given, and it is unavailable for use outside the DB Schenker system. In [14], authors provide a review on the topic of stacked fruit in transit that is damaged by vibrations. The authors intended to reduce fruit quality deterioration caused by vibrations in the range of 0 to 10Hz. Additionally, the authors proposed using simulation approaches to minimize the possible damage. In [21], the authors examined using alternative ecologically-friendly materials while lowering packing costs to protect objects from shock during transit and handling. The goal was to lower the amount of material utilized while enhancing the strength of the material. The shock sensor is coupled to a weight dropped on the tested package. A force of 1 g was applied to 10 different packaging materials. In recent years, different simulation technique"
+    },
+    {
+      "id": "09e46829-e5af-42ff-a514-6cf07889011f:25:d898e0d7",
+      "stratum": "title-only-reference",
+      "queryKind": "author_venue_year",
+      "query": {
+        "kind": "author_venue_year",
+        "text": "Lee IEEE Trans 2014"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "",
+        "title": "Inertial Sensing-Based Pre-Impact Detection of Falls Involving Near-Fall Scenarios"
+      },
+      "labelBasis": "reference-text-title",
+      "reviewStatus": "auto-needs-review",
+      "source": {
+        "paperTitle": "Smart Sticker Ultra-Low-Power Shock Detection in the Supply Chain",
+        "page": 21,
+        "referenceNumber": 25,
+        "referenceText": "25. Lee, J.; Robinovitch, S.; Park, E. Inertial Sensing-Based Pre-Impact Detection of Falls Involving Near-Fall Scenarios. IEEE Trans. Neural Syst. Rehabil. Eng. 2014, 23, 258–266. [CrossRef] [PubMed]",
+        "parsedFields": {
+          "title": "Inertial Sensing-Based Pre-Impact Detection of Falls Involving Near-Fall Scenarios",
+          "authors": "Lee, J.; Robinovitch, S.; Park, E",
+          "venue": "IEEE Trans",
+          "year": "2014"
+        }
+      },
+      "citationContext": "track and monitor cargo conditions. The hardware specifications are not given, and it is unavailable for use outside the DB Schenker system. In [14], authors provide a review on the topic of stacked fruit in transit that is damaged by vibrations. The authors intended to reduce fruit quality deterioration caused by vibrations in the range of 0 to 10Hz. Additionally, the authors proposed using simulation approaches to minimize the possible damage. In [21], the authors examined using alternative ecologically-friendly materials while lowering packing costs to protect objects from shock during transit and handling. The goal was to lower the amount of material utilized while enhancing the strength of the material. The shock sensor is coupled to a weight dropped on the tested package. A force of 1 g was applied to 10 different packaging materials. In recent years, different simulation technique"
+    },
+    {
+      "id": "09e46829-e5af-42ff-a514-6cf07889011f:26:541aec57",
+      "stratum": "title-only-reference",
+      "queryKind": "title_author_year",
+      "query": {
+        "kind": "title_author_year",
+        "text": "Measurement of Truck Transport Vibration Levels in China as a Function of Road Conditions, Truck Speed and Load Level Zhou 2015"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "",
+        "title": "Measurement of Truck Transport Vibration Levels in China as a Function of Road Conditions, Truck Speed and Load Level"
+      },
+      "labelBasis": "reference-text-title",
+      "reviewStatus": "auto-needs-review",
+      "source": {
+        "paperTitle": "Smart Sticker Ultra-Low-Power Shock Detection in the Supply Chain",
+        "page": 21,
+        "referenceNumber": 26,
+        "referenceText": "26. Zhou, R.; Yan, L.; Li, B.; Xie, J. Measurement of Truck Transport Vibration Levels in China as a Function of Road Conditions, Truck Speed and Load Level. Packag. Technol. Sci. 2015, 28, 949–957. [CrossRef]",
+        "parsedFields": {
+          "title": "Measurement of Truck Transport Vibration Levels in China as a Function of Road Conditions, Truck Speed and Load Level",
+          "authors": "Zhou, R.; Yan, L.; Li, B.; Xie, J",
+          "venue": "Packag",
+          "year": "2015"
+        }
+      },
+      "citationContext": "track and monitor cargo conditions. The hardware specifications are not given, and it is unavailable for use outside the DB Schenker system. In [14], authors provide a review on the topic of stacked fruit in transit that is damaged by vibrations. The authors intended to reduce fruit quality deterioration caused by vibrations in the range of 0 to 10Hz. Additionally, the authors proposed using simulation approaches to minimize the possible damage. In [21], the authors examined using alternative ecologically-friendly materials while lowering packing costs to protect objects from shock during transit and handling. The goal was to lower the amount of material utilized while enhancing the strength of the material. The shock sensor is coupled to a weight dropped on the tested package. A force of 1 g was applied to 10 different packaging materials. In recent years, different simulation technique"
+    },
+    {
+      "id": "09e46829-e5af-42ff-a514-6cf07889011f:27:b248237e",
+      "stratum": "title-only-reference",
+      "queryKind": "title_venue_year",
+      "query": {
+        "kind": "title_venue_year",
+        "text": "Measurement and Analysis of Vibration Levels for Truck Transport Environment in Korea Appl 2020"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "",
+        "title": "Measurement and Analysis of Vibration Levels for Truck Transport Environment in Korea"
+      },
+      "labelBasis": "reference-text-title",
+      "reviewStatus": "auto-needs-review",
+      "source": {
+        "paperTitle": "Smart Sticker Ultra-Low-Power Shock Detection in the Supply Chain",
+        "page": 21,
+        "referenceNumber": 27,
+        "referenceText": "27. Park, J.; Choi, S.; Jung, H.M. Measurement and Analysis of Vibration Levels for Truck Transport Environment in Korea. Appl. Sci. 2020, 10, 6754. [CrossRef]",
+        "parsedFields": {
+          "title": "Measurement and Analysis of Vibration Levels for Truck Transport Environment in Korea",
+          "authors": "Park, J.; Choi, S.; Jung, H.M",
+          "venue": "Appl",
+          "year": "2020"
+        }
+      },
+      "citationContext": "track and monitor cargo conditions. The hardware specifications are not given, and it is unavailable for use outside the DB Schenker system. In [14], authors provide a review on the topic of stacked fruit in transit that is damaged by vibrations. The authors intended to reduce fruit quality deterioration caused by vibrations in the range of 0 to 10Hz. Additionally, the authors proposed using simulation approaches to minimize the possible damage. In [21], the authors examined using alternative ecologically-friendly materials while lowering packing costs to protect objects from shock during transit and handling. The goal was to lower the amount of material utilized while enhancing the strength of the material. The shock sensor is coupled to a weight dropped on the tested package. A force of 1 g was applied to 10 different packaging materials. In recent years, different simulation technique"
+    },
+    {
+      "id": "09e46829-e5af-42ff-a514-6cf07889011f:28:fac8e83c",
+      "stratum": "title-only-reference",
+      "queryKind": "title",
+      "query": {
+        "kind": "title",
+        "text": "Available online: saver_3x90/ (accessed on 28 January"
+      },
+      "gold": {
+        "doi": "",
+        "arxiv": "",
+        "title": "Available online: saver_3x90/ (accessed on 28 January"
+      },
+      "labelBasis": "reference-text-title",
+      "reviewStatus": "auto-needs-review",
+      "source": {
+        "paperTitle": "Smart Sticker Ultra-Low-Power Shock Detection in the Supply Chain",
+        "page": 21,
+        "referenceNumber": 28,
+        "referenceText": "28. SAVER 3X90 Shock And Vibration Field Data Recorder. Available online: https://www.lansmont.com/products/data_loggers/ saver_3x90/ (accessed on 28 January 2022).",
+        "parsedFields": {
+          "title": "Available online: saver_3x90/ (accessed on 28 January",
+          "authors": "SAVER 3X90 Shock And Vibration Field Data Recorder",
+          "venue": "",
+          "year": "2022"
+        }
+      },
+      "citationContext": "track and monitor cargo conditions. The hardware specifications are not given, and it is unavailable for use outside the DB Schenker system. In [14], authors provide a review on the topic of stacked fruit in transit that is damaged by vibrations. The authors intended to reduce fruit quality deterioration caused by vibrations in the range of 0 to 10Hz. Additionally, the authors proposed using simulation approaches to minimize the possible damage. In [21], the authors examined using alternative ecologically-friendly materials while lowering packing costs to protect objects from shock during transit and handling. The goal was to lower the amount of material utilized while enhancing the strength of the material. The shock sensor is coupled to a weight dropped on the tested package. A force of 1 g was applied to 10 different packaging materials. In recent years, different simulation technique"
+    }
+  ]
+}

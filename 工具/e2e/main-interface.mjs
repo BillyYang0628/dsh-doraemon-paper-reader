@@ -131,6 +131,17 @@ page.on('pageerror', (error) => consoleErrors.push(String(error)))
 await page.goto(args.url, { waitUntil: 'domcontentloaded' })
 await page.waitForTimeout(2500)
 
+// 全新 DSH_HOME 会先显示一次官方预览版说明；“继续”属于宿主首次启动层，
+// 不点会拦截右侧栏按钮。只在它真实可见时关闭，不影响日常 profile。
+if (await clickIfVisible(page, '继续', 1500)) {
+  await page.waitForTimeout(500)
+}
+// 全新 profile 没有模型凭据时，宿主会显示 API Key 引导；“稍后配置”只关闭引导，
+// 不写入任何凭据，插件入口与本地页面仍可验证。
+if (await clickIfVisible(page, '稍后配置', 1500)) {
+  await page.waitForTimeout(500)
+}
+
 if (args.mode === 'dump') {
   console.log('=== buttons')
   console.table(await describe(page, 'button', 80))

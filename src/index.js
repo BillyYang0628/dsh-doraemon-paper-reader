@@ -12,6 +12,7 @@
 // 论文路由（MirrorDoc 等）在后续提交里逐个加。
 
 import { readFile, stat } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -19,6 +20,7 @@ import { ROUTE_PREFIX, etagFor, methodAllowed, mimeFor, resolveAssetPath } from 
 import { createAnnotationBatchStore, createReadAnnotationsTool } from './annotations.js'
 import { createReadPapersTool } from './compare.js'
 import { createPaperDigestReader } from './digest.js'
+import { createNoveltySearchTool } from './novelty.js'
 import { API_ROUTE_PREFIX, createPaperApi, defaultDataRoot } from './papers.js'
 
 export const name = 'dsh-doraemon-paper-reader'
@@ -28,6 +30,7 @@ const ASSETS_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 const VENDOR_ROOT = path.join(ASSETS_ROOT, 'vendor')
 /** 包根目录（用于定位随包发布的 Python 转换脚本）。 */
 const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const PACKAGE_VERSION = createRequire(import.meta.url)('../package.json').version
 const VENDOR_ROUTE_PREFIX = '/doraemon-paper-reader/vendor'
 const VENDOR_FILE_RE = /^katex\/(?:katex\.min\.(?:js|css)|fonts\/KaTeX_[A-Za-z0-9-]+\.woff2)$/
 
@@ -158,7 +161,7 @@ export function apply(ctx) {
   const digestReader = createPaperDigestReader({ jobsRoot: path.join(dataRoot, 'jobs') })
 
   console.log(
-    '[doraemon-paper-reader] host half loaded (v0.1.0) — assets + PDF/compare API + read_annotations/read_papers tools',
+    `[doraemon-paper-reader] host half loaded (v${PACKAGE_VERSION}) — assets + PDF/compare API + read_annotations/read_papers tools`,
   )
 
   // 模型取回完整批注包的工具。用户消息里只放摘要与批次号；
@@ -174,7 +177,11 @@ export function apply(ctx) {
         () => scoped.tools.register(createReadPapersTool({ readDigests: digestReader.readDigests })),
         'doraemon-paper-reader: read papers tool',
       )
-      console.log('[doraemon-paper-reader] doraemon_read_annotations / doraemon_read_papers registration installed')
+      scoped.effect(
+        () => scoped.tools.register(createNoveltySearchTool()),
+        'doraemon-paper-reader: novelty search tool',
+      )
+      console.log('[doraemon-paper-reader] doraemon_read_annotations / read_papers / search_novelty registration installed')
     } catch (error) {
       console.error('[doraemon-paper-reader] tool registration failed:', error)
     }

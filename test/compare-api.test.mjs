@@ -132,6 +132,35 @@ async function fixture(options = {}) {
         { jobId: JOB_A, fields: { question: { text: 'A question', blockIds: ['a101'] } } },
         { jobId: JOB_B, fields: { question: { text: 'B question', blockIds: ['b101'] } } },
       ],
+      relations: [
+        {
+          type: 'difference',
+          text: '两篇都涉及传感器，但测量对象不同。',
+          evidence: [
+            { jobId: JOB_A, blockId: 'a101' },
+            { jobId: JOB_B, blockId: 'b101' },
+          ],
+        },
+      ],
+      gaps: [
+        {
+          text: '尚未在真实设备上联合验证两类传感器。',
+          kind: 'grounded',
+          support: [
+            { jobId: JOB_A, blockId: 'a101' },
+            { jobId: JOB_B, blockId: 'b101' },
+          ],
+          nextStep: '设计跨设备联合实验。',
+          noveltyCheck: 'not-run',
+        },
+        {
+          text: '可以组合两种校准流程。',
+          kind: 'model-inference',
+          support: [],
+          nextStep: '先做小规模试验。',
+          noveltyCheck: 'not-run',
+        },
+      ],
       notes: ['fake'],
     }
   })
@@ -211,7 +240,11 @@ test('对照表 API：模型只调一次，第二次命中缓存；无效锚点�
     })
     assert.equal(first.status, 200)
     assert.equal(first.body.cached, false)
+    assert.equal(first.body.kind, 'survey-table')
     assert.equal(first.body.table.fields.find((field) => field.key === 'question').cells[0].grounded, true)
+    assert.equal(first.body.table.relations.length, 1)
+    assert.equal(first.body.table.gaps.length, 2)
+    assert.equal(first.body.table.stats.gapsGrounded, 1)
     assert.equal(chatCalls(), 1)
 
     const second = await call(api.handler, 'POST', '/doraemon-paper-reader/api/compare/table', {
@@ -220,6 +253,89 @@ test('对照表 API：模型只调一次，第二次命中缓存；无效锚点�
     assert.equal(second.status, 200)
     assert.equal(second.body.cached, true)
     assert.equal(chatCalls(), 1, '同一组论文不应重复调模型')
+  } finally {
+    api.dispose()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('B9 对照表 API：模型首次返回非法 JSON 时自动重试一次', async () => {
+  let calls = 0
+  const { root, api } = await fixture({
+    chatJsonImpl: async () => {
+      calls += 1
+      if (calls === 1) throw new SyntaxError("Expected ',' or '}' after property value in JSON at position 1672")
+      return {
+        papers: [
+          { jobId: JOB_A, fields: { question: { text: 'A question', blockIds: ['a101'] } } },
+          { jobId: JOB_B, fields: { question: { text: 'B question', blockIds: ['b101'] } } },
+        ],
+        relations: [],
+        gaps: [],
+      }
+    },
+  })
+  try {
+    const response = await call(api.handler, 'POST', '/doraemon-paper-reader/api/compare/table', {
+      jobIds: [JOB_A, JOB_B],
+      surveyMode: 'method',
+    })
+    assert.equal(response.status, 200)
+    assert.equal(response.body.kind, 'survey-table')
+    assert.equal(calls, 2)
+  } finally {
+    api.dispose()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('B9 对照表 API：连续非法 JSON 降级为可重试业务结果', async () => {
+  const { root, api } = await fixture({
+    chatJsonImpl: async () => {
+      throw new SyntaxError("Expected ',' or '}' after property value in JSON at position 1672")
+    },
+  })
+  try {
+    const response = await call(api.handler, 'POST', '/doraemon-paper-reader/api/compare/table', {
+      jobIds: [JOB_A, JOB_B],
+      surveyMode: 'method',
+    })
+    assert.equal(response.status, 200)
+    assert.equal(response.body.kind, 'table-error')
+    assert.equal(response.body.retryable, true)
+    assert.match(response.body.message, /结构/)
+  } finally {
+    api.dispose()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('B9 综述报告 API：只从已校验表格生成，返回证据统计', async () => {
+  const { root, api } = await fixture()
+  try {
+    const tableResponse = await call(api.handler, 'POST', '/doraemon-paper-reader/api/compare/table', {
+      jobIds: [JOB_A, JOB_B],
+      surveyMode: 'method',
+    })
+    assert.equal(tableResponse.status, 200)
+    const report = await call(
+      api.handler,
+      'POST',
+      '/doraemon-paper-reader/api/compare/survey-report',
+      {
+        jobIds: [JOB_A, JOB_B],
+        surveyMode: 'method',
+        table: tableResponse.body.table,
+      },
+    )
+    assert.equal(report.status, 200)
+    assert.match(report.body.report, /有原文证据的对照/)
+    assert.match(report.body.report, /可验证研究缺口/)
+    assert.match(report.body.report, /模型归纳（需人工验证/)
+    assert.equal(report.body.stats.groundedRelations, 1)
+    assert.equal(report.body.stats.groundedGaps, 1)
+    assert.equal(report.body.stats.inferenceGaps, 1)
+    assert.equal(report.body.stats.unsourcedFacts, 0)
   } finally {
     api.dispose()
     await rm(root, { recursive: true, force: true })

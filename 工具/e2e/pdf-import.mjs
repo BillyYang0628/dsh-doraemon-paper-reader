@@ -28,6 +28,9 @@ function parseArgs(argv) {
     else if (token === '--expect-separators') out.expectSeparators = Number(argv[++i])
     else if (token === '--expect-algorithm-rules') out.expectAlgorithmRules = Number(argv[++i])
     else if (token === '--focus-text') out.focusText = argv[++i]
+    else if (token === '--expect-tables') out.expectTables = Number(argv[++i])
+    else if (token === '--expect-table-meta') out.expectTableMeta = Number(argv[++i])
+    else if (token === '--focus-table') out.focusTable = argv[++i]
     else throw new Error('未知参数：' + token)
   }
   return out
@@ -159,9 +162,14 @@ try {
   const flowBadgeLabels = await flowBadges.allInnerTexts()
   const separatorCount = await page.locator('.dpr-readerSeparator').count()
   const algorithmRuleCount = await page.locator('.dpr-readerAlgorithmRule').count()
+  const tableCount = await page.locator('.dpr-readerFigure[data-kind="table"]').count()
+  const tableMetaCount = await page.locator('.dpr-tableStructureMeta').count()
   if (flowBadgeCount === 0) errors.push('正文没有渲染分组页码入口')
-  if (new Set(flowBadgeLabels).size !== flowBadgeLabels.length) {
-    errors.push('同一页码在正文页标中重复出现：' + JSON.stringify(flowBadgeLabels))
+  for (let index = 1; index < flowBadgeLabels.length; index += 1) {
+    if (flowBadgeLabels[index] === flowBadgeLabels[index - 1]) {
+      errors.push('相邻正文块重复显示同一页码页标：' + JSON.stringify(flowBadgeLabels))
+      break
+    }
   }
   if (paragraphCount >= 10 && flowBadgeCount >= paragraphCount) {
     errors.push(`正文页标没有按页合并：${flowBadgeCount} badges / ${paragraphCount} paragraphs`)
@@ -183,6 +191,15 @@ try {
   ) {
     errors.push(`算法内部规则数量不对：${algorithmRuleCount} != ${args.expectAlgorithmRules}`)
   }
+  if (Number.isFinite(args.expectTables) && tableCount !== args.expectTables) {
+    errors.push(`表格块数量不对：${tableCount} != ${args.expectTables}`)
+  }
+  if (
+    Number.isFinite(args.expectTableMeta) &&
+    tableMetaCount !== args.expectTableMeta
+  ) {
+    errors.push(`表格结构提示数量不对：${tableMetaCount} != ${args.expectTableMeta}`)
+  }
   if (separatorCount > 0 || algorithmRuleCount > 0) {
     const anchor =
       algorithmRuleCount > 0
@@ -200,6 +217,19 @@ try {
       await focus.scrollIntoViewIfNeeded()
       await page.waitForTimeout(250)
       await page.screenshot({ path: path.join(outDir, 'focus.png') })
+    }
+  }
+  if (args.focusTable) {
+    const table = page
+      .locator('.dpr-readerFigure[data-kind="table"]')
+      .filter({ hasText: args.focusTable })
+      .first()
+    if ((await table.count()) === 0) {
+      errors.push('阅读页未找到要聚焦的表格：' + JSON.stringify(args.focusTable))
+    } else {
+      await table.scrollIntoViewIfNeeded()
+      await page.waitForTimeout(250)
+      await page.screenshot({ path: path.join(outDir, 'table-focus.png') })
     }
   }
   const pageBadge = specialBadgeCount > 0 ? specialBadges.first() : flowBadges.first()
@@ -587,6 +617,8 @@ try {
           contentRules: separatorCount,
           algorithmRules: algorithmRuleCount,
         },
+        tables: tableCount,
+        tableStructures: tableMetaCount,
         broken,
         warnings: ['聊天回答里的引用链接尚未稳定接入阅读页；当前使用段尾批注气泡高亮'],
         errors,

@@ -17,11 +17,14 @@ from extract_pdf import (  # noqa: E402
     _column_end_for_full_width_artifact,
     _borderless_figure_region,
     _borderless_table_region,
+    _borderless_table_region_above,
     _algorithm_steps,
     _equation_regions,
     _group_chars_to_lines,
     _infer_column_structure,
     _infer_column_split,
+    _infer_table_structure,
+    _table_structure_from_words,
     _is_rotated_page,
     _is_caption_continuation,
     annotate_roles,
@@ -175,12 +178,35 @@ class TextReconstructionTests(unittest.TestCase):
                     "x1": 540,
                     "bottom": 210,
                     "pageWidth": 595,
+                    "columnSplit": 300,
                     "maxCenterGap": 60,
                 }
             ]
         )
         self.assertEqual([item["rule"] for item in findings], ["reading-order.cross-column-line"])
         self.assertEqual(summary["crossColumnLines"], 1)
+
+    def test_reading_order_audit_ignores_single_column_table_row(self):
+        findings, summary = detect_reading_order(
+            [
+                {
+                    "id": "p021-f003",
+                    "page": 21,
+                    "role": "prose",
+                    "columnScope": "full",
+                    "text": "WDC Web Tables Corpus TQA, SP It contains table and metadata",
+                    "x0": 93,
+                    "top": 99,
+                    "x1": 535,
+                    "bottom": 108,
+                    "pageWidth": 612,
+                    "columnSplit": None,
+                    "maxCenterGap": 70,
+                }
+            ]
+        )
+        self.assertEqual(findings, [])
+        self.assertEqual(summary["crossColumnLines"], 0)
 
     def test_separator_audit_flags_unrepresented_content_rule(self):
         rules = [
@@ -494,6 +520,15 @@ class ColumnDetectionTests(unittest.TestCase):
 
         self.assertTrue(_is_rotated_page(FakePage()))
 
+    def test_landscape_page_with_quarter_turn_is_marked_rotated(self):
+        class FakePage:
+            width = 842
+            height = 595
+            rotation = 90
+            chars = [{"text": "A", "upright": True}]
+
+        self.assertTrue(_is_rotated_page(FakePage()))
+
     def test_finds_gap_between_two_columns(self):
         class FakePage:
             width = 600
@@ -565,8 +600,97 @@ class ColumnDetectionTests(unittest.TestCase):
         ]
         region = _borderless_table_region(lines, caption, 10.0, 600, 842)
         self.assertIsNotNone(region)
-        self.assertGreater(region[3], 116)
-        self.assertLess(region[3], 130)
+
+    def test_borderless_table_region_can_end_at_caption_below_table(self):
+        caption = {
+            "page": 17,
+            "columnScope": "full",
+            "bbox": [200, 232, 410, 242],
+            "top": 232,
+            "bottom": 242,
+        }
+        lines = [
+            {"id": "header", "page": 17, "columnScope": "full", "role": "prose", "text": "Task Task Coverage Examples", "x0": 90, "x1": 520, "top": 189, "bottom": 197, "size": 9, "maxCenterGap": 30},
+            {"id": "row1", "page": 17, "columnScope": "full", "role": "prose", "text": "Classification labels examples", "x0": 90, "x1": 520, "top": 203, "bottom": 211, "size": 9, "maxCenterGap": 30},
+            {"id": "row2", "page": 17, "columnScope": "full", "role": "prose", "text": "Regression predicts values", "x0": 90, "x1": 520, "top": 212, "bottom": 220, "size": 9, "maxCenterGap": 30},
+            {"id": "caption", "page": 17, "columnScope": "full", "role": "caption", "text": "Table 1: Tasks", "x0": 200, "x1": 410, "top": 321, "bottom": 331, "size": 10},
+        ]
+        region = _borderless_table_region_above(lines, caption, 10.0, 612.0)
+        self.assertIsNotNone(region)
+        self.assertLess(region[1], 189)
+        self.assertGreaterEqual(region[3], 230)
+
+    def test_table_structure_recovers_rows_and_columns_from_words(self):
+        words = [
+            {"text": "Task", "x0": 90, "x1": 120, "top": 100, "bottom": 108},
+            {"text": "Coverage", "x0": 190, "x1": 240, "top": 100, "bottom": 108},
+            {"text": "Examples", "x0": 450, "x1": 520, "top": 100, "bottom": 108},
+            {"text": "Classification", "x0": 90, "x1": 140, "top": 110, "bottom": 118},
+            {"text": "labels", "x0": 190, "x1": 240, "top": 110, "bottom": 118},
+            {"text": "[52]", "x0": 450, "x1": 470, "top": 110, "bottom": 118},
+            {"text": "Regression", "x0": 90, "x1": 135, "top": 120, "bottom": 128},
+            {"text": "values", "x0": 190, "x1": 225, "top": 120, "bottom": 128},
+            {"text": "[21]", "x0": 450, "x1": 470, "top": 120, "bottom": 128},
+        ]
+        structure = _table_structure_from_words(words, (80, 98, 530, 130))
+        self.assertEqual(structure["rowCount"], 3)
+        self.assertEqual(structure["columnCount"], 3)
+        self.assertEqual(structure["rows"][1]["cells"], ["Classification", "labels", "[52]"])
+
+    def test_table_structure_prefers_pdfplumber_grid(self):
+        class FakeTable:
+            bbox = (80, 100, 520, 140)
+
+            def extract(self):
+                return [
+                    ["Dataset", "Task", "Modality"],
+                    ["WikiTQ", "QA", "Semi-structured"],
+                    ["SPIDER", "SQL", "Text"],
+                ]
+
+        class FakePage:
+            def find_tables(self):
+                return [FakeTable()]
+
+            def extract_words(self):
+                raise AssertionError("word fallback should not run")
+
+        structure = _infer_table_structure(FakePage(), (70, 90, 530, 150))
+        self.assertEqual(structure["mode"], "line-grid")
+        self.assertEqual(structure["rowCount"], 3)
+        self.assertEqual(structure["columnCount"], 3)
+
+    def test_table_structure_uses_header_columns_for_merged_first_column(self):
+        words = [
+            {"text": "Fragility", "x0": 55, "x1": 100, "top": 100, "bottom": 108},
+            {"text": "Product", "x0": 280, "x1": 330, "top": 100, "bottom": 108},
+            {"text": "Level", "x0": 500, "x1": 530, "top": 100, "bottom": 108},
+            {"text": "VeryDelicate", "x0": 60, "x1": 120, "top": 120, "bottom": 128},
+            {"text": "equipment description", "x0": 190, "x1": 320, "top": 120, "bottom": 128},
+            {"text": "25-40g", "x0": 500, "x1": 530, "top": 120, "bottom": 128},
+            {"text": "ModeratelyRugged", "x0": 55, "x1": 125, "top": 140, "bottom": 148},
+            {"text": "machinery", "x0": 268, "x1": 310, "top": 140, "bottom": 148},
+            {"text": ">=115g", "x0": 503, "x1": 530, "top": 140, "bottom": 148},
+        ]
+        structure = _table_structure_from_words(words, (50, 98, 540, 150))
+        self.assertEqual(structure["columnCount"], 3)
+        self.assertEqual(structure["rows"][1]["cells"][0], "VeryDelicate")
+
+    def test_table_structure_marks_vertical_merge_in_first_column(self):
+        words = [
+            {"text": "Task", "x0": 55, "x1": 90, "top": 100, "bottom": 108},
+            {"text": "Method", "x0": 280, "x1": 330, "top": 100, "bottom": 108},
+            {"text": "SemanticParsing", "x0": 55, "x1": 130, "top": 120, "bottom": 128},
+            {"text": "First", "x0": 280, "x1": 330, "top": 120, "bottom": 128},
+            {"text": "Second", "x0": 280, "x1": 330, "top": 140, "bottom": 148},
+        ]
+        structure = _table_structure_from_words(words, (50, 98, 340, 150))
+        merged = next(
+            row for row in structure["rows"]
+            if row["cells"] and row["cells"][0] == "SemanticParsing"
+        )
+        self.assertEqual(merged["rowSpan"][0], 2)
+        self.assertEqual(structure["mergedCells"], 1)
 
     def test_borderless_vector_figure_uses_small_text_above_caption(self):
         caption = {
@@ -822,6 +946,28 @@ class MirrorDocTests(unittest.TestCase):
         html = render_html(doc)
         self.assertIn('class="separator"', html)
         self.assertIn('class="algorithm-rule"', html)
+
+    def test_standalone_html_renders_table_structure_meta(self):
+        doc = {
+            "meta": {"title": "T", "pageCount": 1},
+            "version": {},
+            "coverage": {},
+            "outline": [],
+            "blocks": [{
+                "id": "b0000",
+                "type": "table",
+                "page": 2,
+                "label": "Table 6",
+                "caption": "Table 6. Results.",
+                "text": "Table 6. Results.",
+                "tableStructure": {"rowCount": 19, "columnCount": 10},
+                "continuation": True,
+                "continuationOfPage": 1,
+            }],
+        }
+        html = render_html(doc)
+        self.assertIn("结构识别：19 行 × 10 列", html)
+        self.assertIn("续表，承接 p.1", html)
 
 
 class ReconcileTests(unittest.TestCase):

@@ -112,8 +112,16 @@ try {
     }
   }
   const candidates = page.locator('.dpr-candidate')
-  if ((await candidates.count()) > 1) {
-    await candidates.nth(1).click()
+  if ((await candidates.count()) > 0) {
+    const primary = page.locator('.dpr-candidate.is-primary')
+    if ((await primary.count()) !== 1) {
+      errors.push('引用候选没有唯一的“最可能原文引用”主候选')
+    }
+    const primaryText = (await primary.first().innerText().catch(() => '')).replace(/\s+/g, ' ')
+    if (!/匹配分 \d+\/100/.test(primaryText) || !/[高中低]置信/.test(primaryText)) {
+      errors.push('候选没有显示匹配分或置信度：' + primaryText.slice(0, 240))
+    }
+    await candidates.first().click()
     for (let i = 0; i < 45; i += 1) {
       await page.waitForTimeout(1000)
       if (

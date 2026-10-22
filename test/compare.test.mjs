@@ -9,6 +9,8 @@ import assert from 'node:assert/strict'
 
 import {
   COMPARE_FIELDS,
+  SURVEY_MODES,
+  assessSurveyCompatibility,
   buildCompareChatPrompt,
   buildConceptPrompt,
   buildVersionDiff,
@@ -18,6 +20,7 @@ import {
   buildCompactTableText,
   buildCompareMessage,
   buildSurveyPrompt,
+  buildSurveyReport,
   compareKey,
   createReadPapersTool,
   normalizeCitationVerdict,
@@ -88,6 +91,48 @@ test('字段：七项固定顺序，覆盖问题/对象/方法/指标/结果/局
   )
 })
 
+test('B9 可比性预检：相关方法可比、无关论文拒绝、同版本拒绝', () => {
+  const edgeA = {
+    jobId: 'job-aaaaaaaa',
+    title: 'Edge AI for Plant Disease Detection',
+    doi: '10.1/a',
+    abstract: 'A lightweight edge vision model detects plant disease on low power devices.',
+    sections: [{ title: 'Method', gist: 'lightweight edge vision transformer' }],
+    excerpts: [{ blockId: 'a101', text: 'plant disease detection with edge devices' }],
+  }
+  const edgeB = {
+    jobId: 'job-bbbbbbbb',
+    title: 'Lightweight Vision Transformers for Crop Disease Detection',
+    doi: '10.1/b',
+    abstract: 'A lightweight vision transformer detects crop disease on edge devices.',
+    sections: [{ title: 'Method', gist: 'edge vision transformer for crop disease' }],
+    excerpts: [{ blockId: 'b101', text: 'crop disease detection on low power edge devices' }],
+  }
+  const unrelated = {
+    jobId: 'job-cccccccc',
+    title: 'Medieval Poetry and Court Ritual',
+    abstract: 'This history paper studies medieval poetry and court ritual in old manuscripts.',
+    sections: [{ title: 'Archive', gist: 'manuscript history' }],
+    excerpts: [{ blockId: 'c101', text: 'medieval court ritual and manuscript history' }],
+  }
+  assert.equal(assessSurveyCompatibility([edgeA, edgeB], 'method').canProceed, true)
+  const mismatch = assessSurveyCompatibility([edgeA, unrelated], 'method')
+  assert.equal(mismatch.status, 'not-recommended')
+  assert.equal(mismatch.canProceed, false)
+
+  const version = assessSurveyCompatibility(
+    [
+      edgeA,
+      { ...edgeB, title: 'Different title', doi: edgeA.doi },
+    ],
+    'method',
+  )
+  assert.equal(version.status, 'not-recommended')
+  assert.equal(version.duplicatePairs[0].reason, 'same-doi')
+  assert.equal(assessSurveyCompatibility([edgeA], 'method').status, 'not-recommended')
+  assert.equal(assessSurveyCompatibility([edgeA, edgeB], 'gap').status, 'not-recommended')
+})
+
 test('综述表：有效 blockId 才算已定位；无效锚点保留文字但标未定位；空值记未找到', () => {
   const table = normalizeComparisonTable(
     {
@@ -130,6 +175,103 @@ test('综述表：有效 blockId 才算已定位；无效锚点保留文字但�
   assert.ok(table.warnings.length >= 1)
 })
 
+test('B9 关系与缺口：关系必须有证据；缺口需两篇论文锚点或明确模型归纳', () => {
+  const preflight = assessSurveyCompatibility([digestA, digestB], 'method')
+  const table = normalizeComparisonTable(
+    {
+      papers: [
+        { jobId: digestA.jobId, fields: { question: { text: 'A question', blockIds: ['a101'] } } },
+        { jobId: digestB.jobId, fields: { question: { text: 'B question', blockIds: ['b101'] } } },
+      ],
+      relations: [
+        {
+          type: 'difference',
+          text: '两篇研究的测量对象不同，结论不能直接合并。',
+          evidence: [
+            { jobId: digestA.jobId, blockId: 'a101' },
+            { jobId: digestB.jobId, blockId: 'b101' },
+          ],
+        },
+        { type: 'shared', text: '没有锚点的共同点', evidence: [] },
+      ],
+      gaps: [
+        {
+          text: '尚未在真实振动设备上验证低功耗传感器方案。',
+          kind: 'grounded',
+          support: [
+            { jobId: digestA.jobId, blockId: 'a101' },
+            { jobId: digestB.jobId, blockId: 'b101' },
+          ],
+          nextStep: '在两篇论文之外做跨设备实验。',
+        },
+        {
+          text: '组合两种校准策略可能降低误差。',
+          kind: 'model-inference',
+          support: [],
+          nextStep: '构造联合校准实验。',
+        },
+        {
+          text: '只有一个锚点的伪缺口。',
+          kind: 'grounded',
+          support: [{ jobId: digestA.jobId, blockId: 'a101' }],
+        },
+      ],
+    },
+    [digestA, digestB],
+    { surveyMode: 'method', preflight },
+  )
+  assert.equal(table.relations.length, 1)
+  assert.equal(table.relations[0].grounded, true)
+  assert.equal(table.gaps.length, 2)
+  assert.equal(table.stats.gapsGrounded, 1)
+  assert.equal(table.stats.gapsInference, 1)
+  assert.match(table.warnings.join('；'), /少于两篇论文/)
+})
+
+test('B9 综述报告：事实区只写已有 blockId 的内容，模型归纳单列', () => {
+  const preflight = assessSurveyCompatibility([digestA, digestB], 'method')
+  const table = normalizeComparisonTable(
+    {
+      papers: [
+        {
+          jobId: digestA.jobId,
+          fields: { result: { text: 'A reports 0.42 error.', blockIds: ['a201'] } },
+        },
+        {
+          jobId: digestB.jobId,
+          fields: { result: { text: '未找到', blockIds: [] } },
+        },
+      ],
+      relations: [],
+      gaps: [
+        {
+          text: '需要跨设备验证。',
+          kind: 'grounded',
+          support: [
+            { jobId: digestA.jobId, blockId: 'a201' },
+            { jobId: digestB.jobId, blockId: 'b201' },
+          ],
+          nextStep: '做联合实验。',
+        },
+        {
+          text: '可组合校准策略。',
+          kind: 'model-inference',
+          support: [],
+          nextStep: '先做小规模试验。',
+        },
+      ],
+    },
+    [digestA, digestB],
+    { surveyMode: 'method', preflight },
+  )
+  const report = buildSurveyReport({ table, preflight, title: 'Test Survey' })
+  assert.match(report.markdown, /A reports 0\.42 error\. \[P1 a201\]/)
+  assert.match(report.markdown, /可验证研究缺口/)
+  assert.match(report.markdown, /模型归纳（需人工验证/)
+  assert.match(report.markdown, /未找到：1/)
+  assert.equal(report.stats.unsourcedFacts, 0)
+})
+
 test('引用结论：有效证据才保留 supports；没有证据一律降级为证据不足', () => {
   const supported = normalizeCitationVerdict(
     {
@@ -154,12 +296,15 @@ test('引用结论：有效证据才保留 supports；没有证据一律降级�
 })
 
 test('提示词：综述带七字段与两篇档案；引用带引用处原文与被引论文', () => {
-  const survey = buildSurveyPrompt({ digests: [digestA, digestB] })
+  const survey = buildSurveyPrompt({ digests: [digestA, digestB], surveyMode: 'method' })
   assert.match(survey.system, /设定不同/)
   assert.match(survey.user, /Paper A/)
   assert.match(survey.user, /Paper B/)
   assert.match(survey.user, /question/)
   assert.match(survey.user, /blockIds/)
+  assert.match(survey.user, new RegExp(SURVEY_MODES.method.label))
+  assert.match(survey.user, /relations/)
+  assert.match(survey.user, /model-inference/)
 
   const citation = buildCitationPrompt({
     digests: [digestA, digestB],
@@ -183,6 +328,10 @@ test('缓存键：论文顺序无关，引用位置与模式会换键', () => {
   assert.notEqual(
     one,
     compareKey({ jobIds: [digestA.jobId, digestB.jobId], mode: 'citation', citing: { jobId: digestA.jobId, blockId: 'a101' } }),
+  )
+  assert.notEqual(
+    compareKey({ jobIds: [digestA.jobId, digestB.jobId], mode: 'survey', surveyMode: 'method' }),
+    compareKey({ jobIds: [digestA.jobId, digestB.jobId], mode: 'survey', surveyMode: 'report' }),
   )
 })
 

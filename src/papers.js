@@ -9,9 +9,12 @@
 
 import { spawn } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
+import { createWriteStream } from 'node:fs'
 import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { Transform } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
 
 import { BATCH_ID_RE, MAX_ANNOTATION_BYTES } from './annotations.js'
 import {
@@ -29,16 +32,50 @@ import {
   buildConceptPrompt,
   buildCompareMessage,
   buildSurveyPrompt,
+  buildSurveyReport,
   buildVersionDiff,
   compareKey,
+  assessSurveyCompatibility,
+  SURVEY_MODES,
   normalizeCitationVerdict,
   normalizeChartSpec,
   normalizeConceptSpec,
   normalizeComparisonTable,
+  normalizeSurveyMode,
 } from './compare.js'
 import { createPaperDigestReader } from './digest.js'
 import { chatJson, chatText, visionJson } from './llm.js'
 import { resolveLookup } from './lookup.js'
+import {
+  LIBRARY_ENTRY_FILE,
+  createLibraryEntry,
+  groupLibraryItems,
+  libraryGroupKey,
+  normalizeLibraryEntry,
+  normalizeLibraryMetadata,
+  normalizeLibraryStatus,
+} from './library.js'
+import {
+  KNOWLEDGE_INDEX_VERSION,
+  annotationsToJson,
+  annotationsToMarkdown,
+  buildCitationGraph,
+  buildKnowledgeProfile,
+  citationsToMarkdown,
+  createKnowledgeEntry,
+  glossaryToCsv,
+  groupKnowledgeResults,
+  knowledgeFacets,
+  searchKnowledge,
+} from './knowledge.js'
+import {
+  OUTLINE_CACHE_FILE,
+  buildOutlineSource,
+  buildSemanticOutlinePrompt,
+  fallbackOutline,
+  normalizeSemanticOutline,
+  outlineSourceHash,
+} from './outline.js'
 import { createPythonRuntime } from './python-runtime.js'
 import {
   DEFAULT_TARGET_LANG,
@@ -152,6 +189,37 @@ export function routeRequest(rawUrl) {
   if (parts.length === 2 && parts[0] === 'citations' && parts[1] === 'analyze') return { type: 'citation-analyze' }
   if (parts.length === 2 && parts[0] === 'citations' && parts[1] === 'promote') return { type: 'citation-promote' }
   if (parts.length === 1 && parts[0] === 'library') return { type: 'library' }
+  if (parts.length === 1 && parts[0] === 'knowledge') return { type: 'knowledge' }
+  if (parts.length === 2 && parts[0] === 'knowledge' && parts[1] === 'rebuild') {
+    return { type: 'knowledge-rebuild' }
+  }
+  if (parts.length === 2 && parts[0] === 'knowledge' && parts[1] === 'search') {
+    return { type: 'knowledge-search' }
+  }
+  if (parts.length === 2 && parts[0] === 'knowledge' && parts[1] === 'answer') {
+    return { type: 'knowledge-answer' }
+  }
+  if (parts.length === 2 && parts[0] === 'knowledge' && parts[1] === 'profile') {
+    return { type: 'knowledge-profile' }
+  }
+  if (parts.length === 2 && parts[0] === 'knowledge' && parts[1] === 'progress') {
+    return { type: 'knowledge-progress' }
+  }
+  if (parts.length === 2 && parts[0] === 'knowledge' && parts[1] === 'qa') {
+    return { type: 'knowledge-qa' }
+  }
+  if (parts.length === 2 && parts[0] === 'library' && parts[1] === 'import') {
+    return { type: 'library-import' }
+  }
+  if (parts.length === 2 && parts[0] === 'library' && parts[1] === 'convert') {
+    return { type: 'library-convert' }
+  }
+  if (parts.length === 2 && parts[0] === 'library' && parts[1] === 'trash') {
+    return { type: 'library-trash' }
+  }
+  if (parts.length === 2 && parts[0] === 'library' && parts[1] === 'restore') {
+    return { type: 'library-restore' }
+  }
   if (parts.length === 1 && parts[0] === 'maintenance') return { type: 'maintenance' }
   if (parts.length === 2 && parts[0] === 'maintenance' && parts[1] === 'python') {
     return { type: 'maintenance-python' }
@@ -168,6 +236,7 @@ export function routeRequest(rawUrl) {
     if (parts[1] === 'version-diff') return { type: 'compare-version-diff' }
     if (parts[1] === 'chart') return { type: 'compare-chart' }
     if (parts[1] === 'concept') return { type: 'compare-concept' }
+    if (parts[1] === 'survey-report') return { type: 'compare-survey-report' }
     if (parts[1] === 'archive') return { type: 'compare-archive' }
     if (parts[1] === 'archives') return { type: 'compare-archives' }
     return { type: 'unknown' }
@@ -184,6 +253,9 @@ export function routeRequest(rawUrl) {
   if (parts.length === 2) return { type: 'status', jobId: parts[1] }
   if (parts.length === 3 && parts[2] === 'citations') {
     return { type: 'citation-index', jobId: parts[1] }
+  }
+  if (parts.length === 3 && parts[2] === 'semantic-outline') {
+    return { type: 'semantic-outline', jobId: parts[1] }
   }
   if (parts.length === 3 && parts[2] === 'translate') {
     return { type: 'translation', jobId: parts[1] }
@@ -223,6 +295,15 @@ export function routeRequest(rawUrl) {
   }
   if (parts.length === 3 && parts[2] === 'cancel-task') {
     return { type: 'cancel-task', jobId: parts[1] }
+  }
+  if (parts.length === 3 && parts[2] === 'convert') {
+    return { type: 'job-convert', jobId: parts[1] }
+  }
+  if (parts.length === 3 && parts[2] === 'citation-graph') {
+    return { type: 'citation-graph', jobId: parts[1] }
+  }
+  if (parts.length === 3 && parts[2] === 'export') {
+    return { type: 'job-export', jobId: parts[1] }
   }
   if (parts.length === 3 && parts[2] === 'annotations') {
     return { type: 'annotations', jobId: parts[1] }
@@ -401,12 +482,24 @@ export function createPaperApi({
   const jobs = new Map()
   const children = new Set()
   const jobsRoot = path.join(dataRoot, 'jobs')
+  const trashRoot = path.join(dataRoot, 'library-trash')
   const comparisonsRoot = path.join(dataRoot, 'comparisons')
   const compareArchivesRoot = path.join(dataRoot, 'compare-archives')
+  const knowledgeRoot = path.join(dataRoot, 'knowledge')
+  const knowledgeIndexPath = path.join(knowledgeRoot, 'index.json')
+  const knowledgeProfilePath = path.join(knowledgeRoot, 'profile.json')
+  const knowledgeQaPath = path.join(knowledgeRoot, 'qa.jsonl')
+  const annotationBatchesRoot = path.join(dataRoot, 'annotation-batches')
   const previewJobsRoot = path.join(dataRoot, 'citation-previews')
   const citationAnalysisRoot = path.join(dataRoot, 'citation-analyses')
   const citationCardsRoot = path.join(dataRoot, 'citation-cards')
   const termLookupCache = new Map()
+  const conversionQueue = []
+  const queuedConversionIds = new Set()
+  let conversionQueueRunning = false
+  let knowledgeIndexMemory = null
+  let knowledgeProfileWrite = Promise.resolve()
+  let knowledgeQaWrite = Promise.resolve()
   const annotationsFile = 'annotations.json'
   const maxSavedAnnotationsBytes = 512 * 1024
   const extractor = path.join(packageRoot, '工具', 'pdf-pipeline', 'extract_pdf.py')
@@ -566,6 +659,22 @@ export function createPaperApi({
     return null
   }
 
+  /** 文档管理可识别的目录：包含 manifest、原 PDF 或已完成 MirrorDoc。 */
+  const libraryDirFor = async (jobId) => {
+    if (!JOB_ID_RE.test(jobId)) return null
+    const live = jobs.get(jobId)
+    if (live) return live.dir
+    const dir = path.join(jobsRoot, jobId)
+    if (
+      (await fileExists(path.join(dir, LIBRARY_ENTRY_FILE))) ||
+      (await fileExists(path.join(dir, 'original.pdf'))) ||
+      (await fileExists(path.join(dir, 'mirrordoc.json')))
+    ) {
+      return dir
+    }
+    return null
+  }
+
   /** 读一篇论文的持久化批注；没有文件时返回空存档。 */
   const readAnnotations = async (jobDir, jobId) => {
     try {
@@ -610,8 +719,151 @@ export function createPaperApi({
     return record
   }
 
-  /** 扫描作业目录，生成论文库列表；不把绝对路径发给浏览器。 */
-  const listLibrary = async () => {
+  const fileExists = async (file) => {
+    try {
+      return (await stat(file)).isFile()
+    } catch {
+      return false
+    }
+  }
+
+  const pathExists = async (target) => {
+    try {
+      await stat(target)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  const libraryDirectoryArtifacts = async (dir, pipeline = 'pdf') => ({
+    originalPdf: await fileExists(path.join(dir, 'original.pdf')),
+    mirrorDoc: await fileExists(path.join(dir, 'mirrordoc.json')),
+    paperSummary: await fileExists(path.join(dir, 'paper-summary.json')),
+    sourcePages: await fileExists(path.join(dir, 'source-pages', 'page-01.png')),
+    assets: await pathExists(path.join(dir, 'assets')),
+    sourceHtml:
+      pipeline === 'html'
+        ? await fileExists(path.join(dir, 'source', 'paper.html'))
+        : false,
+  })
+
+  const libraryTitleFromName = (name) =>
+    String(name || '')
+      .replace(/\.pdf$/i, '')
+      .replace(/[_-]+/g, ' ')
+      .trim()
+
+  const readLibraryEntry = async (jobId, dir, runtimeJob = null) => {
+    const manifest = await readJsonIfPresent(path.join(dir, LIBRARY_ENTRY_FILE))
+    const summary = await readJsonIfPresent(path.join(dir, 'paper-summary.json'))
+    const doc = await readJsonIfPresent(path.join(dir, 'mirrordoc.json'))
+    let info = null
+    try {
+      info = await stat(dir)
+    } catch {
+      return null
+    }
+    const pipeline =
+      manifest?.pipeline === 'html' || doc?.provenance?.mirrorKind === 'html' ? 'html' : 'pdf'
+    const artifacts = await libraryDirectoryArtifacts(dir, pipeline)
+    const metadata = normalizeLibraryMetadata({
+      title: summary?.title || doc?.meta?.title || manifest?.metadata?.title || '',
+      authors: summary?.authors || doc?.meta?.authors || manifest?.metadata?.authors || '',
+      doi: summary?.identifiers?.doi || doc?.meta?.doi || manifest?.metadata?.doi || '',
+      arxiv: summary?.identifiers?.arxiv || doc?.meta?.arxivId || manifest?.metadata?.arxiv || '',
+      venue: summary?.venue || doc?.meta?.venue || manifest?.metadata?.venue || '',
+      year: summary?.year || doc?.meta?.year || manifest?.metadata?.year || '',
+    })
+    const originalName = String(
+      manifest?.originalName || summary?.originalName || doc?.meta?.originalName || '',
+    )
+    if (!metadata.title) metadata.title = libraryTitleFromName(originalName)
+    const generatedAt =
+      summary?.generatedAt || doc?.meta?.generatedAt || info.birthtime?.toISOString?.() || info.mtime.toISOString()
+    let status = manifest
+      ? normalizeLibraryStatus(manifest.status)
+      : artifacts.mirrorDoc
+        ? 'ready'
+        : artifacts.originalPdf || artifacts.sourceHtml
+          ? 'imported'
+          : 'missing'
+    let stage = manifest?.stage || status
+    let message = manifest?.message || ''
+    let error = manifest?.error || null
+
+    if (runtimeJob) {
+      if (runtimeJob.status === 'running') {
+        status = runtimeJob.stage === 'queued' ? 'queued' : 'converting'
+        stage = runtimeJob.stage || status
+        message = runtimeJob.message || message
+      } else if (runtimeJob.status === 'done') {
+        status = 'ready'
+        stage = 'done'
+        message = runtimeJob.message || '抄写完成'
+      } else if (runtimeJob.status === 'failed') {
+        status = 'failed'
+        stage = 'failed'
+        error = runtimeJob.error || runtimeJob.message || error
+      }
+    } else if (status === 'converting' || status === 'queued') {
+      // 上次进程已经退出；不能继续假装正在转换。
+      status = 'failed'
+      stage = 'interrupted'
+      error = '转换进程因应用重启而中断，可重试。'
+      message = error
+    }
+
+    if (artifacts.mirrorDoc && runtimeJob?.status !== 'running') {
+      status = runtimeJob?.status === 'failed' ? 'failed' : 'ready'
+    }
+    if (!artifacts.originalPdf && pipeline === 'pdf') status = 'missing'
+    if (pipeline === 'html' && !artifacts.sourceHtml && !artifacts.mirrorDoc) status = 'missing'
+
+    const entry = normalizeLibraryEntry(manifest, {
+      jobId,
+      originalName,
+      sha256: doc?.meta?.sha256 || summary?.sha256 || '',
+      bytes: artifacts.originalPdf
+        ? (await stat(path.join(dir, 'original.pdf')).then((value) => value.size).catch(() => 0))
+        : 0,
+      pipeline,
+      source: summary?.route || doc?.provenance?.route || 'local-pdf',
+      status,
+      stage,
+      message,
+      error,
+      metadata,
+      importedAt: manifest?.importedAt || generatedAt,
+      updatedAt: manifest?.updatedAt || generatedAt || info.mtime.toISOString(),
+      artifacts,
+    })
+    entry.status = status
+    entry.stage = stage
+    entry.message = message
+    entry.error = error
+    entry.pipeline = pipeline
+    entry.metadata = metadata
+    entry.originalName = originalName
+    entry.updatedAt = generatedAt || entry.updatedAt
+    entry.readyAt = status === 'ready' ? runtimeJob?.finishedAt || entry.readyAt || generatedAt : ''
+    if (runtimeJob?.finishedAt) entry.updatedAt = runtimeJob.finishedAt
+    return entry
+  }
+
+  const writeLibraryEntry = async (dir, entry) => {
+    const normalized = normalizeLibraryEntry(entry, { jobId: path.basename(dir) })
+    normalized.updatedAt = new Date().toISOString()
+    await mkdir(dir, { recursive: true })
+    await writeFile(
+      path.join(dir, LIBRARY_ENTRY_FILE),
+      JSON.stringify(normalized, null, 2),
+      'utf8',
+    )
+    return normalized
+  }
+
+  const listManagedLibrary = async () => {
     let entries
     try {
       entries = await readdir(jobsRoot, { withFileTypes: true })
@@ -619,84 +871,678 @@ export function createPaperApi({
       if (cause?.code === 'ENOENT') return []
       throw cause
     }
-    const papers = []
-    for (const entry of entries) {
-      if (!entry.isDirectory() || !JOB_ID_RE.test(entry.name)) continue
-      const dir = path.join(jobsRoot, entry.name)
-      let summary = null
-      try {
-        summary = JSON.parse(await readFile(path.join(dir, 'paper-summary.json'), 'utf8'))
-      } catch {
-        // 老作业没有 summary 时退回 mirrordoc.meta。
-      }
-      if (!summary) {
-        try {
-          const doc = JSON.parse(await readFile(path.join(dir, 'mirrordoc.json'), 'utf8'))
-          summary = {
-            title: doc?.meta?.title || '',
-            authors: doc?.meta?.authors || '',
-            identifiers: { doi: doc?.meta?.doi || '', arxiv: doc?.meta?.arxivId || '' },
-            generatedAt: doc?.meta?.generatedAt || '',
-          }
-        } catch {
-          continue
-        }
-      }
-      if (!summary?.title) continue
+    const items = []
+    for (const directory of entries) {
+      if (!directory.isDirectory() || !JOB_ID_RE.test(directory.name)) continue
+      const dir = path.join(jobsRoot, directory.name)
+      const runtimeJob = jobs.get(directory.name) || null
+      const entry = await readLibraryEntry(directory.name, dir, runtimeJob)
+      if (!entry) continue
       let archive = { items: [], updatedAt: null }
       try {
-        archive = await readAnnotations(dir, entry.name)
+        archive = await readAnnotations(dir, directory.name)
       } catch {
-        // 损坏的批注存档不应让整库列表失败；阅读页单独报错。
+        // 损坏批注不影响管理列表；阅读页会单独报错。
       }
-      let info
-      try {
-        info = await stat(dir)
-      } catch {
-        continue
-      }
-      const updatedAt =
-        archive.updatedAt || summary.generatedAt || info.mtime.toISOString()
-      papers.push({
-        jobId: entry.name,
-        title: summary.title,
-        authors: summary.authors || '',
-        doi: summary.identifiers?.doi || '',
-        arxiv: summary.identifiers?.arxiv || '',
+      const info = await stat(dir).catch(() => null)
+      items.push({
+        ...entry,
+        title: entry.metadata.title || entry.originalName || directory.name,
+        authors: entry.metadata.authors || '',
+        doi: entry.metadata.doi || '',
+        arxiv: entry.metadata.arxiv || '',
+        venue: entry.metadata.venue || '',
+        year: entry.metadata.year || '',
         annotationCount: archive.items.length,
         sentCount: archive.items.filter((item) => item?.sent).length,
-        updatedAt,
-        createdAt: summary.generatedAt || info.birthtime.toISOString(),
-        source: 'local-pdf',
+        createdAt: entry.importedAt || info?.birthtime?.toISOString?.() || '',
+        updatedAt: archive.updatedAt || entry.updatedAt || info?.mtime.toISOString?.() || '',
+        groupKey: libraryGroupKey(entry.metadata),
+        canOpen: entry.status === 'ready',
+        canConvert: entry.status === 'imported' || entry.status === 'failed',
+        canTrash: entry.status !== 'queued' && entry.status !== 'converting',
       })
     }
-    // 同一 DOI/arXiv/标题只留一个主条目，优先保留批注更多、更新时间更近的副本。
-    const grouped = new Map()
-    for (const paper of papers) {
-      const identity = paper.doi
-        ? 'doi:' + String(paper.doi).toLowerCase()
-        : paper.arxiv
-          ? 'arxiv:' + String(paper.arxiv).toLowerCase()
-          : 'title:' + String(paper.title).toLowerCase().replace(/\s+/g, ' ').trim()
-      const previous = grouped.get(identity)
-      if (!previous) {
-        grouped.set(identity, { ...paper, copies: 1 })
+    items.sort((left, right) => String(right.updatedAt).localeCompare(String(left.updatedAt)))
+    return items
+  }
+
+  const listTrashLibrary = async () => {
+    let entries
+    try {
+      entries = await readdir(trashRoot, { withFileTypes: true })
+    } catch (cause) {
+      if (cause?.code === 'ENOENT') return []
+      throw cause
+    }
+    const items = []
+    for (const directory of entries) {
+      if (!directory.isDirectory() || !JOB_ID_RE.test(directory.name)) continue
+      const dir = path.join(trashRoot, directory.name)
+      const entry = await readLibraryEntry(directory.name, dir, null)
+      if (!entry) continue
+      const info = await stat(dir).catch(() => null)
+      items.push({
+        ...entry,
+        title: entry.metadata.title || entry.originalName || directory.name,
+        authors: entry.metadata.authors || '',
+        trashedAt: entry.trashedAt || info?.mtime.toISOString?.() || '',
+        updatedAt: entry.trashedAt || info?.mtime.toISOString?.() || '',
+      })
+    }
+    items.sort((left, right) => String(right.trashedAt).localeCompare(String(left.trashedAt)))
+    return items
+  }
+
+  const listLibrary = async () => {
+    const items = (await listManagedLibrary()).filter((item) => item.status === 'ready')
+    return groupLibraryItems(items).map((group) => {
+      const primary = group.items[0]
+      return {
+        ...primary,
+        source: primary.source || 'local-pdf',
+        annotationCount: Math.max(...group.items.map((item) => Number(item.annotationCount) || 0)),
+        copies: group.count,
+      }
+    })
+  }
+
+  const knowledgeFileStamp = async (file) => {
+    try {
+      const info = await stat(file)
+      return String(info.size) + ':' + String(Math.round(info.mtimeMs))
+    } catch {
+      return 'missing'
+    }
+  }
+
+  const knowledgeFingerprint = async () => {
+    const jobs = await jobDirectories()
+    const parts = ['index=' + KNOWLEDGE_INDEX_VERSION]
+    for (const jobId of jobs.sort()) {
+      const dir = path.join(jobsRoot, jobId)
+      parts.push(
+        [
+          jobId,
+          await knowledgeFileStamp(path.join(dir, 'mirrordoc.json')),
+          await knowledgeFileStamp(path.join(dir, 'paper-summary.json')),
+          await knowledgeFileStamp(path.join(dir, annotationsFile)),
+          await knowledgeFileStamp(path.join(dir, 'translations.zh.json')),
+          await knowledgeFileStamp(path.join(dir, 'glossary.json')),
+        ].join(':'),
+      )
+    }
+    for (const [root, label] of [
+      [annotationBatchesRoot, 'batch'],
+      [compareArchivesRoot, 'archive'],
+    ]) {
+      let entries = []
+      try {
+        entries = await readdir(root, { withFileTypes: true })
+      } catch {
+        entries = []
+      }
+      for (const entry of entries.filter((item) => item.isFile()).sort((left, right) => left.name.localeCompare(right.name))) {
+        parts.push(label + ':' + entry.name + ':' + (await knowledgeFileStamp(path.join(root, entry.name))))
+      }
+    }
+    parts.push('qa:' + (await knowledgeFileStamp(knowledgeQaPath)))
+    return createHash('sha256').update(parts.join('\n')).digest('hex')
+  }
+
+  const knowledgeEntry = (items, input) => {
+    const entry = createKnowledgeEntry(input)
+    if (entry) items.push(entry)
+    return entry
+  }
+
+  const normalizedString = (value) =>
+    String(value || '')
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, '')
+
+  const buildKnowledgeIndex = async () => {
+    const entries = []
+    const jobs = await jobDirectories()
+    for (const jobId of jobs.sort()) {
+      const dir = path.join(jobsRoot, jobId)
+      const doc = await readJsonIfPresent(path.join(dir, 'mirrordoc.json'))
+      if (!doc) continue
+      const summary = await readJsonIfPresent(path.join(dir, 'paper-summary.json'))
+      const title = doc?.meta?.title || summary?.title || jobId
+      const authors = doc?.meta?.authors || summary?.authors || ''
+      const doi = doc?.meta?.doi || summary?.identifiers?.doi || ''
+      const arxiv = doc?.meta?.arxivId || summary?.identifiers?.arxiv || ''
+      const updatedAt =
+        summary?.generatedAt || doc?.meta?.generatedAt || new Date().toISOString()
+      const common = { jobId, paperTitle: title, authors, doi, arxiv, updatedAt }
+      if (doc?.meta?.abstract) {
+        knowledgeEntry(entries, {
+          ...common,
+          sourceType: 'text',
+          blockId: '__meta_abstract',
+          page: 1,
+          section: 'Abstract',
+          title: '摘要',
+          text: doc.meta.abstract,
+        })
+      }
+      for (const block of Array.isArray(doc?.blocks) ? doc.blocks : []) {
+        if (!block?.id || !String(block.text || block.caption || '').trim()) continue
+        if (['paragraph', 'heading', 'text', 'caption'].includes(block.type)) {
+          knowledgeEntry(entries, {
+            ...common,
+            sourceType: 'text',
+            blockId: block.id,
+            page: block.page,
+            section: block.section,
+            title: block.type === 'heading' ? block.text : '',
+            text: block.text || block.caption,
+          })
+        } else if (block.type === 'reference') {
+          const reference = extractReferenceFields(block.text || '')
+          knowledgeEntry(entries, {
+            ...common,
+            sourceType: 'citation',
+            blockId: block.id,
+            page: block.page,
+            section: block.section || 'References',
+            title: reference.title || block.text,
+            text: reference.text || block.text,
+            metadata: {
+              number: Number(block.number) || 0,
+              venue: reference.venue,
+              year: reference.year,
+              referenceTitle: reference.title,
+              referenceDoi: reference.doi,
+              referenceArxiv: reference.arxiv,
+            },
+          })
+        }
+      }
+      let archive = { items: [] }
+      try {
+        archive = await readAnnotations(dir, jobId)
+      } catch {
+        archive = { items: [] }
+      }
+      for (const item of archive.items) {
+        const question = String(item?.question || '').trim()
+        const segments = Array.isArray(item?.segments) ? item.segments : []
+        if (segments.length === 0) {
+          knowledgeEntry(entries, {
+            ...common,
+            sourceType: 'annotation',
+            blockId: '',
+            title: '批注',
+            text: question || '仅标记批注',
+            metadata: { annotationId: item.id || '', sent: Boolean(item.sent) },
+          })
+        }
+        for (const segment of segments) {
+          knowledgeEntry(entries, {
+            ...common,
+            sourceType: 'annotation',
+            blockId: segment.blockId,
+            page: segment.page,
+            section: segment.section,
+            title: question || '批注',
+            text: [question, segment.quote].filter(Boolean).join('\n'),
+            metadata: { annotationId: item.id || '', sent: Boolean(item.sent), quote: segment.quote || '' },
+          })
+        }
+      }
+      const translation = await readJsonIfPresent(path.join(dir, 'translations.zh.json'))
+      if (translation?.meta?.title) {
+        knowledgeEntry(entries, {
+          ...common,
+          sourceType: 'translation',
+          blockId: '__meta_title',
+          page: 1,
+          section: 'Title',
+          title: translation.meta.title,
+          text: translation.meta.title,
+        })
+      }
+      if (translation?.meta?.abstract) {
+        knowledgeEntry(entries, {
+          ...common,
+          sourceType: 'translation',
+          blockId: '__meta_abstract',
+          page: 1,
+          section: 'Abstract',
+          title: '摘要译文',
+          text: translation.meta.abstract,
+        })
+      }
+      for (const [blockId, block] of Object.entries(translation?.blocks || {})) {
+        const text = String(block?.text || block?.target || '').trim()
+        if (!text) continue
+        knowledgeEntry(entries, {
+          ...common,
+          sourceType: 'translation',
+          blockId,
+          page: block.page,
+          section: block.section,
+          title: '中文译文',
+          text,
+          metadata: { source: block.source || '', type: block.type || '' },
+        })
+      }
+      const glossary = await readJsonIfPresent(path.join(dir, 'glossary.json'))
+      for (const term of Array.isArray(glossary?.entries) ? glossary.entries : []) {
+        knowledgeEntry(entries, {
+          ...common,
+          sourceType: 'term',
+          blockId: term.firstBlockId || '',
+          title: term.source,
+          text: [term.source, term.target].filter(Boolean).join('：'),
+          metadata: { kind: term.kind || 'term', locked: Boolean(term.locked), count: term.count || 1 },
+        })
+      }
+    }
+
+    let batchFiles = []
+    try {
+      batchFiles = await readdir(annotationBatchesRoot, { withFileTypes: true })
+    } catch {
+      batchFiles = []
+    }
+    for (const directory of batchFiles.filter((entry) => entry.isFile() && entry.name.endsWith('.json')).slice(-300)) {
+      const batch = await readJsonIfPresent(path.join(annotationBatchesRoot, directory.name))
+      for (const annotation of batch?.packet?.annotations || []) {
+        const jobId = String(annotation?.jobId || '')
+        if (!JOB_ID_RE.test(jobId)) continue
+        const paperTitle = annotation?.context?.paper?.title || ''
+        knowledgeEntry(entries, {
+          sourceType: 'annotation',
+          jobId,
+          blockId: annotation?.segments?.[0]?.blockId || '',
+          page: annotation?.segments?.[0]?.page || 0,
+          section: annotation?.segments?.[0]?.section || '',
+          paperTitle,
+          authors: annotation?.context?.paper?.authors || '',
+          doi: annotation?.context?.paper?.doi || '',
+          arxiv: annotation?.context?.paper?.arxiv || '',
+          title: '已发送批注',
+          text: [annotation?.question, batch?.packet?.question].filter(Boolean).join('\n'),
+          updatedAt: batch?.createdAt || '',
+          metadata: { batchId: batch?.batchId || '', mode: batch?.packet?.answerPolicy?.mode || 'default' },
+        })
+      }
+    }
+
+    let qaLines = []
+    try {
+      qaLines = (await readFile(knowledgeQaPath, 'utf8'))
+        .split(/\r?\n/)
+        .filter(Boolean)
+        .slice(-500)
+    } catch {
+      qaLines = []
+    }
+    for (const line of qaLines) {
+      let record
+      try {
+        record = JSON.parse(line)
+      } catch {
         continue
       }
-      const candidateWins =
-        paper.annotationCount > previous.annotationCount ||
-        (paper.annotationCount === previous.annotationCount &&
-          String(paper.createdAt).localeCompare(String(previous.createdAt)) > 0)
-      const winner = candidateWins ? paper : previous
-      grouped.set(identity, {
-        ...winner,
-        annotationCount: Math.max(previous.annotationCount, paper.annotationCount),
-        copies: (previous.copies || 1) + 1,
+      const jobId = String(record?.jobIds?.[0] || '')
+      if (!JOB_ID_RE.test(jobId) || !record?.question || !record?.answer) continue
+      knowledgeEntry(entries, {
+        sourceType: 'qa',
+        jobId,
+        blockId: '',
+        title: record.question,
+        text: '问题：' + record.question + '\n回答：' + record.answer,
+        updatedAt: record.createdAt || '',
+        metadata: {
+          jobIds: Array.isArray(record.jobIds) ? record.jobIds : [jobId],
+          mode: record.mode || 'survey',
+        },
       })
     }
-    const unique = [...grouped.values()]
-    unique.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
-    return unique
+
+    let archiveFiles = []
+    try {
+      archiveFiles = await readdir(compareArchivesRoot, { withFileTypes: true })
+    } catch {
+      archiveFiles = []
+    }
+    for (const file of archiveFiles.filter((entry) => entry.isFile() && entry.name.endsWith('.json'))) {
+      const record = await readJsonIfPresent(path.join(compareArchivesRoot, file.name))
+      const jobId = String(record?.jobIds?.[0] || '')
+      if (!JOB_ID_RE.test(jobId) || !record?.report) continue
+      knowledgeEntry(entries, {
+        sourceType: 'report',
+        jobId,
+        blockId: '',
+        title: record?.titles?.join(' × ') || '综述报告',
+        paperTitle: record?.titles?.[0] || '',
+        text: record.report,
+        updatedAt: record.createdAt || record.savedAt || '',
+        metadata: {
+          archiveId: record.id || '',
+          jobIds: record.jobIds || [],
+          mode: record.mode || 'survey',
+        },
+      })
+    }
+    const unique = new Map()
+    for (const entry of entries) unique.set(entry.id, entry)
+    return [...unique.values()].sort((left, right) =>
+      String(right.updatedAt).localeCompare(String(left.updatedAt)),
+    )
+  }
+
+  const ensureKnowledgeIndex = async ({ force = false } = {}) => {
+    const fingerprint = await knowledgeFingerprint()
+    if (
+      !force &&
+      knowledgeIndexMemory?.version === KNOWLEDGE_INDEX_VERSION &&
+      knowledgeIndexMemory?.fingerprint === fingerprint
+    ) {
+      return knowledgeIndexMemory
+    }
+    if (!force) {
+      const cached = await readJsonIfPresent(knowledgeIndexPath)
+      if (
+        cached?.version === KNOWLEDGE_INDEX_VERSION &&
+        cached?.fingerprint === fingerprint &&
+        Array.isArray(cached.entries)
+      ) {
+        knowledgeIndexMemory = cached
+        return cached
+      }
+    }
+    const entries = await buildKnowledgeIndex()
+    const payload = {
+      version: KNOWLEDGE_INDEX_VERSION,
+      fingerprint,
+      generatedAt: new Date().toISOString(),
+      entries,
+      stats: knowledgeFacets(entries),
+    }
+    await mkdir(knowledgeRoot, { recursive: true })
+    await writeFile(knowledgeIndexPath, JSON.stringify(payload, null, 2), 'utf8')
+    knowledgeIndexMemory = payload
+    return payload
+  }
+
+  const readKnowledgeProfile = async () => {
+    const saved = await readJsonIfPresent(knowledgeProfilePath)
+    return saved?.version === 1 && saved?.jobs ? saved : { version: 1, updatedAt: null, jobs: {} }
+  }
+
+  const updateKnowledgeProgress = async (payload) => {
+    const jobId = String(payload?.jobId || '')
+    if (!JOB_ID_RE.test(jobId)) {
+      throw Object.assign(new Error('阅读进度缺少有效 jobId'), { statusCode: 400 })
+    }
+    const dir = await libraryDirFor(jobId)
+    if (!dir) throw Object.assign(new Error('这篇论文的目录不在了。'), { statusCode: 404 })
+    const seconds = Math.min(300, Math.max(0, Math.ceil(Number(payload?.activeSeconds) || 0)))
+    knowledgeProfileWrite = knowledgeProfileWrite.then(async () => {
+      const profile = await readKnowledgeProfile()
+      const current = profile.jobs[jobId] || {}
+      const visited = new Set(
+        Array.isArray(current.visitedBlockIds) ? current.visitedBlockIds.map(String) : [],
+      )
+      if (/^[A-Za-z0-9_-]{1,80}$/.test(String(payload?.blockId || ''))) {
+        visited.add(String(payload.blockId))
+      }
+      profile.jobs[jobId] = {
+        readingSeconds: Math.max(0, Number(current.readingSeconds) || 0) + seconds,
+        lastReadAt: new Date().toISOString(),
+        lastBlockId: String(payload?.blockId || current.lastBlockId || '').slice(0, 80),
+        lastPage: Math.max(0, Number(payload?.page) || Number(current.lastPage) || 0),
+        lastSection: String(payload?.section || current.lastSection || '').slice(0, 120),
+        visitedBlockIds: [...visited].slice(-500),
+      }
+      profile.updatedAt = new Date().toISOString()
+      await mkdir(knowledgeRoot, { recursive: true })
+      await writeFile(knowledgeProfilePath, JSON.stringify(profile, null, 2), 'utf8')
+      return profile
+    })
+    return knowledgeProfileWrite
+  }
+
+  const recordKnowledgeQa = async (payload) => {
+    const jobIds = [
+      ...new Set((Array.isArray(payload?.jobIds) ? payload.jobIds : []).map(String).filter((id) => JOB_ID_RE.test(id))),
+    ].slice(0, 3)
+    const question = String(payload?.question || '').trim().slice(0, 4000)
+    const answer = String(payload?.answer || '').trim().slice(0, 20000)
+    if (jobIds.length === 0 || !question || !answer) {
+      throw Object.assign(new Error('问答记录需要 jobIds、question 和 answer'), { statusCode: 400 })
+    }
+    knowledgeQaWrite = knowledgeQaWrite.then(async () => {
+      await mkdir(knowledgeRoot, { recursive: true })
+      await writeFile(
+        knowledgeQaPath,
+        JSON.stringify({
+          version: 1,
+          createdAt: new Date().toISOString(),
+          jobIds,
+          mode: String(payload?.mode || 'survey').slice(0, 40),
+          question,
+          answer,
+        }) + '\n',
+        { encoding: 'utf8', flag: 'a' },
+      )
+    })
+    await knowledgeQaWrite
+    return { ok: true, jobIds }
+  }
+
+  const knowledgeProfileSummary = async () => {
+    const [library, profile] = await Promise.all([listManagedLibrary(), readKnowledgeProfile()])
+    const annotationsByJob = {}
+    const reviewByJob = {}
+    for (const paper of library) {
+      const dir = path.join(jobsRoot, paper.jobId)
+      const annotations = await readAnnotations(dir, paper.jobId).catch(() => ({ items: [] }))
+      annotationsByJob[paper.jobId] = {
+        count: annotations.items.length,
+        pending: annotations.items.filter((item) => !item?.sent).length,
+      }
+      const translation = await readJsonIfPresent(path.join(dir, 'translations.zh.json'))
+      const pending = Number(translation?.review?.pending)
+      if (pending > 0) reviewByJob[paper.jobId] = pending
+    }
+    let archives = []
+    try {
+      archives = await readdir(compareArchivesRoot)
+    } catch {
+      archives = []
+    }
+    return buildKnowledgeProfile({
+      library,
+      profile,
+      annotationsByJob,
+      reviewByJob,
+      archives,
+    })
+  }
+
+  const knowledgeCitationGraph = async (jobId) => {
+    const index = await ensureKnowledgeIndex()
+    const library = await listManagedLibrary()
+    const center = library.find((paper) => paper.jobId === jobId)
+    if (!center) throw Object.assign(new Error('这篇论文的目录不在了。'), { statusCode: 404 })
+    const centerTitle = normalizedString(center.title)
+    const centerDoi = String(center.doi || '').toLowerCase()
+    const centerArxiv = String(center.arxiv || '').toLowerCase()
+    const matchesCenter = (entry) =>
+      (centerDoi && String(entry.metadata?.referenceDoi || entry.doi || '').toLowerCase() === centerDoi) ||
+      (centerArxiv &&
+        String(entry.metadata?.referenceArxiv || entry.arxiv || '').toLowerCase() === centerArxiv) ||
+      (centerTitle &&
+        normalizedString(entry.metadata?.referenceTitle || entry.title) === centerTitle)
+    const references = index.entries
+      .filter((entry) => entry.sourceType === 'citation' && entry.jobId === jobId)
+      .map((entry) => ({
+        number: Number(entry.metadata?.number) || 0,
+        blockId: entry.blockId,
+        title: entry.metadata?.referenceTitle || entry.title,
+        text: entry.text,
+        doi: entry.metadata?.referenceDoi || '',
+        arxiv: entry.metadata?.referenceArxiv || '',
+        authors: '',
+        year: entry.metadata?.year || '',
+        venue: entry.metadata?.venue || '',
+        oaStatus: 'unknown',
+      }))
+    const incomingReferences = index.entries
+      .filter(
+        (entry) =>
+          entry.sourceType === 'citation' &&
+          entry.jobId !== jobId &&
+          matchesCenter(entry),
+      )
+      .map((entry) => ({
+        citingJobId: entry.jobId,
+        number: Number(entry.metadata?.number) || 0,
+        blockId: entry.blockId,
+      }))
+    return buildCitationGraph({
+      centerJobId: jobId,
+      center,
+      references,
+      incomingReferences,
+      library,
+    })
+  }
+
+  const knowledgeAnswer = async (payload) => {
+    const question = String(payload?.question || '').trim()
+    if (!question) throw Object.assign(new Error('知识检索需要问题'), { statusCode: 400 })
+    const index = await ensureKnowledgeIndex()
+    const result = searchKnowledge(index.entries, {
+      query: question,
+      sourceTypes: payload?.sourceTypes,
+      jobIds: payload?.jobIds,
+      limit: 18,
+    })
+    if (result.results.length === 0) {
+      return {
+        answer: '当前本地知识库没有找到与这个问题相关且带原文锚点的材料。',
+        sources: [],
+        search: result,
+      }
+    }
+    const aliases = new Map()
+    let nextAlias = 1
+    const sourceLines = result.results.map((entry) => {
+      if (!aliases.has(entry.jobId)) aliases.set(entry.jobId, 'P' + nextAlias++)
+      const alias = aliases.get(entry.jobId)
+      return (
+        '[' +
+        alias +
+        (entry.blockId ? ' ' + entry.blockId : '') +
+        '] 《' +
+        entry.paperTitle +
+        '》 ' +
+        entry.sourceLabel +
+        (entry.page ? ' p.' + entry.page : '') +
+        '：' +
+        entry.snippet
+      )
+    })
+    const system = [
+      '你是论文知识库问答器。只使用给出的检索材料回答。',
+      '输出中文 Markdown，先给直接答案，再给证据。',
+      '每条事实后标 [P1 b0002]；材料不足写「当前检索未找到」，不得补造。',
+      '把论文原文、批注/翻译和模型归纳区分清楚。',
+    ].join('\n')
+    let answer
+    let warning = ''
+    try {
+      answer = await chatTextImpl({
+        system,
+        user: '问题：' + question + '\n\n检索材料：\n' + sourceLines.join('\n'),
+        maxTokens: 1800,
+      })
+    } catch (error) {
+      warning =
+        error?.code === 'NO_API_KEY'
+          ? '没有模型凭据；本地检索结果仍可正常查看。'
+          : '证据整理模型暂不可用；本地检索结果仍可正常查看。'
+      answer = warning
+    }
+    return {
+      answer: String(answer || '').trim(),
+      sources: result.results,
+      warning,
+      search: {
+        terms: result.terms,
+        totalCandidates: result.totalCandidates,
+      },
+    }
+  }
+
+  const exportJobKnowledge = async (jobId, kind) => {
+    const dir = await libraryDirFor(jobId)
+    if (!dir) throw Object.assign(new Error('这篇论文的目录不在了。'), { statusCode: 404 })
+    const paper = (await listManagedLibrary()).find((item) => item.jobId === jobId) || { jobId }
+    if (kind === 'annotations-md' || kind === 'annotations-json') {
+      const archive = await readAnnotations(dir, jobId)
+      if (kind === 'annotations-json') {
+        const result = annotationsToJson({ jobId, paper, items: archive.items })
+        return {
+          contentType: 'application/json; charset=utf-8',
+          content: result.json,
+          filename: 'annotations-' + jobId.slice(0, 8) + '.json',
+          warnings: result.warnings,
+        }
+      }
+      const result = annotationsToMarkdown({ jobId, paper, items: archive.items })
+      return {
+        contentType: 'text/markdown; charset=utf-8',
+        content: result.markdown,
+        filename: 'annotations-' + jobId.slice(0, 8) + '.md',
+        warnings: result.warnings,
+      }
+    }
+    if (kind === 'glossary-csv') {
+      const saved = await readJsonIfPresent(path.join(dir, 'glossary.json'))
+      const entries = Array.isArray(saved?.entries)
+        ? saved.entries
+        : extractGlossary(await readJsonIfPresent(path.join(dir, 'mirrordoc.json')) || {})
+      return {
+        contentType: 'text/csv; charset=utf-8',
+        content: glossaryToCsv(entries),
+        filename: 'glossary-' + jobId.slice(0, 8) + '.csv',
+        warnings: entries.some((entry) => !entry.firstBlockId) ? ['部分术语没有原文 blockId'] : [],
+      }
+    }
+    if (kind === 'citations-md') {
+      const doc = await readJsonIfPresent(path.join(dir, 'mirrordoc.json'))
+      if (!doc) throw Object.assign(new Error('这篇论文没有 MirrorDoc。'), { statusCode: 404 })
+      const references = (doc.blocks || [])
+        .filter((block) => block.type === 'reference')
+        .map((block) => {
+          const fields = extractReferenceFields(block.text || '')
+          return {
+            title: fields.title,
+            text: block.text || '',
+            doi: fields.doi,
+            arxiv: fields.arxiv,
+            blockId: block.id,
+            number: block.number,
+          }
+        })
+      return {
+        contentType: 'text/markdown; charset=utf-8',
+        content: citationsToMarkdown({ jobId, paper, references, analyses: [] }),
+        filename: 'citations-' + jobId.slice(0, 8) + '.md',
+        warnings: references.filter((reference) => !reference.blockId).length
+          ? ['部分参考文献没有 blockId']
+          : [],
+      }
+    }
+    throw Object.assign(new Error('不支持的导出类型'), { statusCode: 400 })
   }
 
   /** 查询前先看论文库：同一 DOI/arXiv/标题已经有主条目就直接复用。 */
@@ -775,6 +1621,16 @@ export function createPaperApi({
     pipeline: job.pipeline || 'pdf',
     status: job.status,
     stage: job.stage,
+    libraryStatus:
+      job.status === 'done'
+        ? 'ready'
+        : job.status === 'failed'
+          ? 'failed'
+          : job.stage === 'queued'
+            ? 'queued'
+            : job.status === 'running'
+              ? 'converting'
+              : normalizeLibraryStatus(job.libraryStatus, 'imported'),
     message: job.message,
     preview: Boolean(job.preview),
     originalName: job.originalName,
@@ -852,6 +1708,7 @@ export function createPaperApi({
     update(job, {
       status: 'failed',
       stage: 'failed',
+      libraryStatus: 'failed',
       message: error?.message || String(error),
       error: error?.message || String(error),
       finishedAt: new Date().toISOString(),
@@ -956,6 +1813,7 @@ export function createPaperApi({
     update(job, {
       status: 'done',
       stage: 'done',
+      libraryStatus: 'ready',
       message: '抄写完成，陛下请过目。',
       finishedAt: new Date().toISOString(),
       coverage: doc.coverage ?? null,
@@ -994,6 +1852,216 @@ export function createPaperApi({
     } catch (error) {
       fail(job, error)
     }
+  }
+
+  const runtimeJobFromLibraryEntry = (entry, dir) => ({
+    id: entry.jobId,
+    dir,
+    pdfPath: path.join(dir, 'original.pdf'),
+    kind: 'pdf-import',
+    pipeline: 'pdf',
+    originalName: entry.originalName,
+    status: 'running',
+    stage: 'queued',
+    message: '已进入转义队列。',
+    startedAt: new Date().toISOString(),
+    libraryStatus: 'queued',
+  })
+
+  const drainConversionQueue = async () => {
+    if (conversionQueueRunning) return
+    conversionQueueRunning = true
+    try {
+      while (conversionQueue.length > 0) {
+        const next = conversionQueue.shift()
+        const jobId = next.jobId
+        queuedConversionIds.delete(jobId)
+        const dir = await libraryDirFor(jobId)
+        if (!dir) continue
+        const pdfPath = path.join(dir, 'original.pdf')
+        if (!(await fileExists(pdfPath))) {
+          const entry = await readLibraryEntry(jobId, dir, null)
+          if (entry) {
+            entry.status = 'missing'
+            entry.stage = 'missing'
+            entry.error = '原 PDF 已丢失，请重新导入。'
+            entry.message = entry.error
+            await writeLibraryEntry(dir, entry)
+          }
+          continue
+        }
+        const entry = await readLibraryEntry(jobId, dir, null)
+        const job = jobs.get(jobId) || runtimeJobFromLibraryEntry(entry || {}, dir)
+        Object.assign(job, {
+          status: 'running',
+          stage: 'queued',
+          message: '轮到这篇论文了，正在准备转义。',
+          error: null,
+          finishedAt: null,
+          libraryStatus: 'converting',
+        })
+        jobs.set(jobId, job)
+        if (entry) {
+          entry.status = 'converting'
+          entry.stage = 'queued'
+          entry.message = job.message
+          entry.error = null
+          await writeLibraryEntry(dir, entry)
+        }
+        try {
+          const doc = await runPdfPipeline(job)
+          finishJob(job, doc)
+          const readyEntry = await readLibraryEntry(jobId, dir, job)
+          if (readyEntry) await writeLibraryEntry(dir, readyEntry)
+        } catch (error) {
+          fail(job, error)
+          const failedEntry = await readLibraryEntry(jobId, dir, job)
+          if (failedEntry) {
+            failedEntry.status = 'failed'
+            failedEntry.stage = 'failed'
+            failedEntry.error = error?.message || String(error)
+            failedEntry.message = failedEntry.error
+            await writeLibraryEntry(dir, failedEntry)
+          }
+        }
+      }
+    } finally {
+      conversionQueueRunning = false
+    }
+  }
+
+  const enqueueConversion = async (jobId, { front = false } = {}) => {
+    const dir = await libraryDirFor(jobId)
+    if (!dir) throw Object.assign(new Error('文档不存在。'), { statusCode: 404 })
+    const entry = await readLibraryEntry(jobId, dir, jobs.get(jobId) || null)
+    if (!entry) throw Object.assign(new Error('文档清单损坏。'), { statusCode: 409 })
+    if (entry.status === 'ready') return { jobId, libraryStatus: 'ready', queued: false }
+    if (!(await fileExists(path.join(dir, 'original.pdf')))) {
+      throw Object.assign(new Error('原 PDF 已丢失，不能转义。'), { statusCode: 409 })
+    }
+    const live = jobs.get(jobId)
+    if (live?.status === 'running') {
+      return {
+        jobId,
+        libraryStatus: live.stage === 'queued' ? 'queued' : 'converting',
+        queued: false,
+      }
+    }
+    if (queuedConversionIds.has(jobId)) {
+      return { jobId, libraryStatus: 'queued', queued: false }
+    }
+    const runtime = live || runtimeJobFromLibraryEntry(entry, dir)
+    Object.assign(runtime, {
+      status: 'running',
+      stage: 'queued',
+      message: '已进入转义队列。',
+      error: null,
+      startedAt: runtime.startedAt || new Date().toISOString(),
+      finishedAt: null,
+      libraryStatus: 'queued',
+    })
+    jobs.set(jobId, runtime)
+    entry.status = 'queued'
+    entry.stage = 'queued'
+    entry.message = runtime.message
+    entry.error = null
+    await writeLibraryEntry(dir, entry)
+    queuedConversionIds.add(jobId)
+    if (front) conversionQueue.unshift({ jobId })
+    else conversionQueue.push({ jobId })
+    void drainConversionQueue()
+    return { jobId, libraryStatus: 'queued', queued: true }
+  }
+
+  const findLibraryBySha = async (sha256) => {
+    const hash = String(sha256 || '').toLowerCase()
+    if (!hash) return null
+    return (await listManagedLibrary()).find((item) => item.sha256 === hash) || null
+  }
+
+  const normalizeJobIds = (raw) => {
+    const ids = Array.isArray(raw) ? raw.map(String) : []
+    const unique = [...new Set(ids.filter((id) => JOB_ID_RE.test(id)))]
+    if (unique.length === 0) {
+      throw Object.assign(new Error('请选择至少一篇文档。'), { statusCode: 400 })
+    }
+    if (unique.length > 50) {
+      throw Object.assign(new Error('一次最多处理 50 篇文档。'), { statusCode: 400 })
+    }
+    return unique
+  }
+
+  const trashLibraryItems = async (rawJobIds) => {
+    const jobIds = normalizeJobIds(rawJobIds)
+    await mkdir(trashRoot, { recursive: true })
+    const moved = []
+    const failed = []
+    for (const jobId of jobIds) {
+      const live = jobs.get(jobId)
+      if (live?.status === 'running') {
+        failed.push({ jobId, error: '正在转义的文档不能移到回收站。' })
+        continue
+      }
+      const sourceDir = await libraryDirFor(jobId)
+      if (!sourceDir) {
+        failed.push({ jobId, error: '文档不存在。' })
+        continue
+      }
+      const targetDir = path.join(trashRoot, jobId)
+      if (await pathExists(targetDir)) {
+        failed.push({ jobId, error: '回收站中已有同 ID 条目。' })
+        continue
+      }
+      try {
+        const entry = await readLibraryEntry(jobId, sourceDir, null)
+        if (entry) {
+          entry.trashedAt = new Date().toISOString()
+          await writeFile(
+            path.join(sourceDir, LIBRARY_ENTRY_FILE),
+            JSON.stringify(entry, null, 2),
+            'utf8',
+          )
+        }
+        await rename(sourceDir, targetDir)
+        jobs.delete(jobId)
+        queuedConversionIds.delete(jobId)
+        moved.push({ jobId, title: entry?.metadata?.title || entry?.originalName || jobId })
+      } catch (error) {
+        failed.push({ jobId, error: error?.message || String(error) })
+      }
+    }
+    return { ok: failed.length === 0, moved, failed }
+  }
+
+  const restoreLibraryItems = async (rawJobIds) => {
+    const jobIds = normalizeJobIds(rawJobIds)
+    await mkdir(jobsRoot, { recursive: true })
+    const restored = []
+    const failed = []
+    for (const jobId of jobIds) {
+      const sourceDir = path.join(trashRoot, jobId)
+      const targetDir = path.join(jobsRoot, jobId)
+      if (!(await pathExists(sourceDir))) {
+        failed.push({ jobId, error: '回收站中没有这篇文档。' })
+        continue
+      }
+      if (await pathExists(targetDir)) {
+        failed.push({ jobId, error: '文档库中已有同 ID 文档。' })
+        continue
+      }
+      try {
+        await rename(sourceDir, targetDir)
+        const entry = await readLibraryEntry(jobId, targetDir, null)
+        if (entry) {
+          entry.trashedAt = ''
+          await writeLibraryEntry(targetDir, entry)
+        }
+        restored.push({ jobId })
+      } catch (error) {
+        failed.push({ jobId, error: error?.message || String(error) })
+      }
+    }
+    return { ok: failed.length === 0, restored, failed }
   }
 
   /** 下载一个 URL，带超时、大小上限与 HTTP 状态；403 不重试。 */
@@ -1291,6 +2359,92 @@ export function createPaperApi({
     return buildCitationIndex(doc.blocks || [])
   }
 
+  const semanticOutlineFor = async (jobId, { generate = false, force = false } = {}) => {
+    const jobDir = await jobDirFor(jobId)
+    if (!jobDir) return null
+    const doc = await readJsonIfPresent(path.join(jobDir, 'mirrordoc.json'))
+    if (!doc) return null
+    const source = buildOutlineSource(doc)
+    const sourceHash = outlineSourceHash(source)
+    const cachePath = path.join(jobDir, OUTLINE_CACHE_FILE)
+    const cached = await readJsonIfPresent(cachePath)
+    if (
+      !force &&
+      cached?.protocol === 1 &&
+      cached?.sourceHash === sourceHash &&
+      cached?.outline?.semantic === true
+    ) {
+      return {
+        status: 'cached',
+        sourceHash,
+        generatedAt: cached.generatedAt || '',
+        outline: cached.outline,
+      }
+    }
+    const fallback = fallbackOutline(doc)
+    if (!generate) {
+      return {
+        status: 'missing',
+        sourceHash,
+        outline: fallback,
+      }
+    }
+    const prompt = buildSemanticOutlinePrompt(doc)
+    try {
+      const raw = await chatJsonImpl({
+        system: prompt.system,
+        user: prompt.user,
+        maxTokens: prompt.maxTokens,
+      })
+      const outline = normalizeSemanticOutline(raw, doc)
+      if (!outline) {
+        return {
+          status: 'fallback',
+          sourceHash,
+          warning: '模型没有返回可核对的目录结构，已回退原文 heading。',
+          outline: fallback,
+        }
+      }
+      const generatedAt = new Date().toISOString()
+      await writeFile(
+        cachePath,
+        JSON.stringify(
+          {
+            protocol: 1,
+            sourceHash,
+            generatedAt,
+            outline,
+          },
+          null,
+          2,
+        ),
+        'utf8',
+      )
+      return {
+        status: 'generated',
+        sourceHash,
+        generatedAt,
+        outline,
+      }
+    } catch (error) {
+      const rawMessage = String(error?.message || error || '')
+      const reason =
+        error?.code === 'NO_API_KEY'
+          ? '没有模型凭据，已回退原文 heading 目录。'
+          : /not found|http\s*404/i.test(rawMessage)
+            ? '语义目录服务暂未就绪，已回退原文 heading 目录。'
+            : /timeout|timed out|aborted|超时/i.test(rawMessage)
+              ? '语义目录生成超时，已回退原文 heading 目录。'
+              : '语义目录生成失败，已回退原文 heading 目录：' + rawMessage.slice(0, 180)
+      return {
+        status: 'fallback',
+        sourceHash,
+        warning: reason,
+        outline: fallback,
+      }
+    }
+  }
+
   const matchingPreviewJob = (metadata) => {
     const doi = String(metadata?.doi || '').toLowerCase()
     const arxiv = String(metadata?.arxiv || '')
@@ -1335,19 +2489,18 @@ export function createPaperApi({
       arxiv: String(body?.arxiv || base.arxiv || ''),
       title: String(body?.title || base.title || ''),
       authors: String(body?.authors || base.authors || ''),
+      venue: String(body?.venue || base.venue || ''),
       year: String(body?.year || base.year || ''),
       query: String(body?.query || base.query || ''),
     }
     const searchFields = fields.doi || fields.arxiv
       ? fields
       : {
-          doi: '',
-          arxiv: '',
-          title: '',
-          authors: '',
-          venue: '',
-          year: '',
-          query: fields.title || fields.query,
+          ...fields,
+          query: fields.query || fields.title,
+          referenceText,
+          citationContext: String(body?.citing?.quote || ''),
+          fromReference: true,
         }
     const resolution = await resolveLookup(searchFields, {
       fetchImpl,
@@ -2642,39 +3795,110 @@ export function createPaperApi({
     }
   }
 
-  const importPdf = async (req, res) => {
+  const receivePdfToDirectory = async (req, jobDir) => {
+    const tempPath = path.join(jobDir, '.upload-' + randomUUID() + '.part')
+    const finalPath = path.join(jobDir, 'original.pdf')
+    const digest = createHash('sha256')
+    let bytes = 0
+    let prefix = Buffer.alloc(0)
+    const meter = new Transform({
+      transform(chunk, encoding, callback) {
+        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, encoding)
+        bytes += buffer.length
+        if (bytes > MAX_PDF_BYTES) {
+          callback(Object.assign(new Error('这份 PDF 超过 200 MB'), { statusCode: 413 }))
+          return
+        }
+        if (prefix.length < 5) {
+          prefix = Buffer.concat([prefix, buffer.subarray(0, 5 - prefix.length)])
+        }
+        digest.update(buffer)
+        callback(null, buffer)
+      },
+    })
+    try {
+      await pipeline(req, meter, createWriteStream(tempPath, { flags: 'wx' }))
+      if (!isPdfBuffer(prefix)) {
+        throw Object.assign(new Error('这份文件不是 PDF，陛下换一份吧。'), { statusCode: 415 })
+      }
+      await rename(tempPath, finalPath)
+      return {
+        pdfPath: finalPath,
+        bytes,
+        sha256: digest.digest('hex'),
+      }
+    } catch (error) {
+      await rm(tempPath, { force: true }).catch(() => {})
+      throw error
+    }
+  }
+
+  const importPdf = async (req, res, { autoStart = true } = {}) => {
     if (req.method !== 'POST') {
       sendError(res, 405, '只接受 POST 上传')
-      return
-    }
-    const body = await readBody(req, MAX_PDF_BYTES, 'PDF')
-    if (!isPdfBuffer(body)) {
-      sendError(res, 415, '这份文件不是 PDF，陛下换一份吧。')
       return
     }
     const jobId = randomUUID()
     const jobDir = path.join(jobsRoot, jobId)
     await mkdir(jobDir, { recursive: true })
-    const pdfPath = path.join(jobDir, 'original.pdf')
-    await writeFile(pdfPath, body)
-    const job = {
-      id: jobId,
-      dir: jobDir,
-      pdfPath,
-      kind: 'pdf-import',
-      pipeline: 'pdf',
-      originalName: cleanOriginalName(req.headers['x-dpr-filename']),
-      status: 'running',
-      stage: 'queued',
-      message: '小的我把 PDF 收下了，排在抄写队列里。',
-      startedAt: new Date().toISOString(),
+    let received
+    try {
+      received = await receivePdfToDirectory(req, jobDir)
+    } catch (error) {
+      await rm(jobDir, { recursive: true, force: true }).catch(() => {})
+      throw error
     }
-    jobs.set(jobId, job)
-    void runJob(job)
+    // 文档管理入口按哈希去重；旧单篇入口必须保持“每次上传都是新任务”的既有交互。
+    const duplicate = autoStart ? null : await findLibraryBySha(received.sha256)
+    if (duplicate) {
+      await rm(jobDir, { recursive: true, force: true })
+      sendJson(res, 200, {
+        duplicate: true,
+        jobId: duplicate.jobId,
+        libraryStatus: duplicate.status,
+        item: duplicate,
+        message: '这篇 PDF 已经在文档库里了。',
+      })
+      return
+    }
+    const originalName = cleanOriginalName(req.headers['x-dpr-filename'])
+    const importedAt = new Date().toISOString()
+    const entry = createLibraryEntry({
+      jobId,
+      originalName,
+      sha256: received.sha256,
+      bytes: received.bytes,
+      pipeline: 'pdf',
+      source: 'local-pdf',
+      status: 'imported',
+      stage: 'imported',
+      message: '文件已入库，尚未转义。',
+      metadata: { title: libraryTitleFromName(originalName) },
+      importedAt,
+      updatedAt: importedAt,
+      artifacts: {
+        originalPdf: true,
+        mirrorDoc: false,
+        paperSummary: false,
+        sourcePages: false,
+        assets: false,
+      },
+    })
+    await writeLibraryEntry(jobDir, entry)
+    let libraryStatus = 'imported'
+    let message = entry.message
+    if (autoStart) {
+      const queued = await enqueueConversion(jobId)
+      libraryStatus = queued.libraryStatus
+      message = '小的我把 PDF 收下了，排在抄写队列里。'
+    }
     sendJson(res, 201, {
       jobId,
       statusUrl: API_PREFIX + 'jobs/' + jobId,
-      message: job.message,
+      message,
+      libraryStatus,
+      duplicate: false,
+      item: { ...entry, status: libraryStatus, message },
     })
   }
 
@@ -2733,7 +3957,63 @@ export function createPaperApi({
         return
       }
       if (route.type === 'import') {
-        await importPdf(req, res)
+        await importPdf(req, res, { autoStart: true })
+        return
+      }
+      if (route.type === 'library-import') {
+        await importPdf(req, res, { autoStart: false })
+        return
+      }
+      if (route.type === 'job-convert') {
+        if (req.method !== 'POST') {
+          sendError(res, 405, '只接受 POST')
+          return
+        }
+        sendJson(res, 202, await enqueueConversion(route.jobId))
+        return
+      }
+      if (route.type === 'library-convert') {
+        if (req.method !== 'POST') {
+          sendError(res, 405, '只接受 POST')
+          return
+        }
+        const body = await readJsonBody(req, 64 * 1024, '批量转义请求')
+        const jobIds = normalizeJobIds(body.jobIds)
+        const results = []
+        for (const jobId of jobIds) {
+          try {
+            results.push(await enqueueConversion(jobId))
+          } catch (error) {
+            results.push({
+              jobId,
+              libraryStatus: 'failed',
+              queued: false,
+              error: error?.message || String(error),
+            })
+          }
+        }
+        sendJson(res, 202, {
+          ok: results.every((item) => !item.error),
+          results,
+        })
+        return
+      }
+      if (route.type === 'library-trash') {
+        if (req.method !== 'POST') {
+          sendError(res, 405, '只接受 POST')
+          return
+        }
+        const body = await readJsonBody(req, 64 * 1024, '回收站请求')
+        sendJson(res, 200, await trashLibraryItems(body.jobIds))
+        return
+      }
+      if (route.type === 'library-restore') {
+        if (req.method !== 'POST') {
+          sendError(res, 405, '只接受 POST')
+          return
+        }
+        const body = await readJsonBody(req, 64 * 1024, '恢复请求')
+        sendJson(res, 200, await restoreLibraryItems(body.jobIds))
         return
       }
       if (route.type === 'lookup-resolve' || route.type === 'lookup-fetch') {
@@ -2782,15 +4062,40 @@ export function createPaperApi({
         try {
           payload = JSON.parse(body.toString('utf8'))
         } catch {
-          sendError(res, 400, '引用请求不是合法 JSON')
+          sendJson(res, 200, {
+            kind: 'invalid',
+            reason: 'malformed-json',
+            retryable: true,
+            message: '引用请求格式异常。请关闭卡片后重新点击这条蓝链。',
+          })
           return
         }
         if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-          sendError(res, 400, '引用请求必须是一个对象')
+          sendJson(res, 200, {
+            kind: 'invalid',
+            reason: 'invalid-payload',
+            retryable: true,
+            message: '引用请求缺少必要结构。请重新点击这条蓝链。',
+          })
           return
         }
         if (route.type === 'citation-resolve') {
-          sendJson(res, 200, await citationResolve(payload))
+          try {
+            sendJson(res, 200, await citationResolve(payload))
+          } catch (error) {
+            sendJson(res, 200, {
+              kind: 'none',
+              reason: 'citation-service-error',
+              retryable: true,
+              message:
+                '引用检索服务暂时不可用；这不是论文不存在，也不是陛下点错了蓝链。稍后重试即可。',
+              diagnostics: {
+                number: Number(payload?.number) || 0,
+                blockId: String(payload?.citing?.blockId || ''),
+                error: String(error?.message || error || '').slice(0, 240),
+              },
+            })
+          }
           return
         }
         if (route.type === 'citation-analyze') {
@@ -2798,6 +4103,32 @@ export function createPaperApi({
           return
         }
         sendJson(res, 200, await promotePreviewJob(String(payload.jobId || '')))
+        return
+      }
+      if (route.type === 'semantic-outline') {
+        if (req.method === 'GET') {
+          const result = await semanticOutlineFor(route.jobId)
+          if (!result) {
+            sendError(res, 404, '这篇论文的目录数据还没有准备好。')
+            return
+          }
+          sendJson(res, 200, result)
+          return
+        }
+        if (req.method === 'POST') {
+          const body = await readJsonBody(req, 16 * 1024, '语义目录请求')
+          const result = await semanticOutlineFor(route.jobId, {
+            generate: true,
+            force: Boolean(body?.force),
+          })
+          if (!result) {
+            sendError(res, 404, '这篇论文的目录数据还没有准备好。')
+            return
+          }
+          sendJson(res, 200, result)
+          return
+        }
+        sendError(res, 405, '语义目录只接受 GET/POST')
         return
       }
       if (route.type === 'citation-index') {
@@ -3166,7 +4497,138 @@ export function createPaperApi({
           sendError(res, 405, '只接受 GET')
           return
         }
+        const url = new URL(req.url || '/', 'http://localhost')
+        if (url.searchParams.get('view') === 'manage') {
+          const items = await listManagedLibrary()
+          sendJson(res, 200, {
+            items,
+            groups: groupLibraryItems(items),
+            trash: await listTrashLibrary(),
+            totals: {
+              total: items.length,
+              imported: items.filter((item) => item.status === 'imported').length,
+              active: items.filter((item) => item.status === 'queued' || item.status === 'converting').length,
+              ready: items.filter((item) => item.status === 'ready').length,
+              failed: items.filter((item) => item.status === 'failed').length,
+              missing: items.filter((item) => item.status === 'missing').length,
+            },
+          })
+          return
+        }
         sendJson(res, 200, { papers: await listLibrary() })
+        return
+      }
+      if (route.type === 'knowledge') {
+        if (req.method !== 'GET') {
+          sendError(res, 405, '只接受 GET')
+          return
+        }
+        const index = await ensureKnowledgeIndex()
+        sendJson(res, 200, {
+          version: index.version,
+          generatedAt: index.generatedAt,
+          fingerprint: index.fingerprint,
+          stats: index.stats,
+        })
+        return
+      }
+      if (route.type === 'knowledge-rebuild') {
+        if (req.method !== 'POST') {
+          sendError(res, 405, '只接受 POST')
+          return
+        }
+        const index = await ensureKnowledgeIndex({ force: true })
+        sendJson(res, 200, {
+          ok: true,
+          version: index.version,
+          generatedAt: index.generatedAt,
+          stats: index.stats,
+        })
+        return
+      }
+      if (route.type === 'knowledge-search') {
+        if (req.method !== 'POST') {
+          sendError(res, 405, '只接受 POST')
+          return
+        }
+        const body = await readJsonBody(req, 64 * 1024, '知识检索请求')
+        const index = await ensureKnowledgeIndex()
+        const search = searchKnowledge(index.entries, {
+          query: body.query,
+          sourceTypes: body.sourceTypes,
+          jobIds: body.jobIds,
+          since: body.since,
+          limit: body.limit,
+        })
+        sendJson(res, 200, {
+          ...search,
+          groups: groupKnowledgeResults(search.results),
+          facets: index.stats,
+        })
+        return
+      }
+      if (route.type === 'knowledge-answer') {
+        if (req.method !== 'POST') {
+          sendError(res, 405, '只接受 POST')
+          return
+        }
+        const body = await readJsonBody(req, 64 * 1024, '知识问答请求')
+        sendJson(res, 200, await knowledgeAnswer(body))
+        return
+      }
+      if (route.type === 'knowledge-profile') {
+        if (req.method !== 'GET') {
+          sendError(res, 405, '只接受 GET')
+          return
+        }
+        sendJson(res, 200, await knowledgeProfileSummary())
+        return
+      }
+      if (route.type === 'knowledge-progress') {
+        if (req.method !== 'POST') {
+          sendError(res, 405, '只接受 POST')
+          return
+        }
+        const body = await readJsonBody(req, 16 * 1024, '阅读进度')
+        await updateKnowledgeProgress(body)
+        sendJson(res, 200, { ok: true })
+        return
+      }
+      if (route.type === 'knowledge-qa') {
+        if (req.method !== 'POST') {
+          sendError(res, 405, '只接受 POST')
+          return
+        }
+        const body = await readJsonBody(req, 64 * 1024, '问答记录')
+        sendJson(res, 201, await recordKnowledgeQa(body))
+        return
+      }
+      if (route.type === 'citation-graph') {
+        if (req.method !== 'GET') {
+          sendError(res, 405, '只接受 GET')
+          return
+        }
+        sendJson(res, 200, await knowledgeCitationGraph(route.jobId))
+        return
+      }
+      if (route.type === 'job-export') {
+        if (req.method !== 'GET') {
+          sendError(res, 405, '只接受 GET')
+          return
+        }
+        const url = new URL(req.url || '/', 'http://localhost')
+        const result = await exportJobKnowledge(
+          route.jobId,
+          String(url.searchParams.get('kind') || 'annotations-md'),
+        )
+        res.writeHead(200, {
+          'Content-Type': result.contentType,
+          'Content-Disposition':
+            'attachment; filename="' + result.filename.replace(/["\r\n]/g, '') + '"',
+          'Cache-Control': 'no-store',
+          'X-DPR-Warnings': encodeURIComponent(JSON.stringify(result.warnings || [])),
+        })
+        res.end(result.content)
         return
       }
       if (route.type === 'compare-digests') {
@@ -3176,6 +4638,9 @@ export function createPaperApi({
         }
         const body = await readJsonBody(req, MAX_COMPARE_BYTES, '对照请求')
         const digests = await compareDigests(body.jobIds)
+        const surveyMode = normalizeSurveyMode(body.surveyMode)
+        const preflight =
+          body.mode === 'citation' ? null : assessSurveyCompatibility(digests, surveyMode)
         const citing =
           body.citing && body.citing.jobId && body.citing.blockId
             ? await resolveCiting(
@@ -3183,7 +4648,7 @@ export function createPaperApi({
                 body.citing,
               )
             : null
-        sendJson(res, 200, { digests, citing })
+        sendJson(res, 200, { digests, citing, surveyMode, preflight })
         return
       }
       if (route.type === 'compare-table') {
@@ -3193,25 +4658,108 @@ export function createPaperApi({
         }
         const body = await readJsonBody(req, MAX_COMPARE_BYTES, '对照请求')
         const digests = await compareDigests(body.jobIds)
-        const key = compareKey({ jobIds: digests.map((digest) => digest.jobId), mode: 'survey' })
-        const cached = await readCompareCache(key)
-        if (cached?.table) {
-          sendJson(res, 200, { table: cached.table, digests, cached: true, savedAt: cached.savedAt })
+        const surveyMode = normalizeSurveyMode(body.surveyMode)
+        const preflight = assessSurveyCompatibility(digests, surveyMode)
+        if (!preflight.canProceed && !body.forceCompare) {
+          sendJson(res, 200, {
+            kind: 'not-comparable',
+            preflight,
+            table: null,
+            digests,
+            cached: false,
+          })
           return
         }
-        const prompt = buildSurveyPrompt({ digests })
-        const raw = await chatJsonImpl({
-          system: prompt.system,
-          user: prompt.user,
-          maxTokens: prompt.maxTokens,
+        const key = compareKey({
+          jobIds: digests.map((digest) => digest.jobId),
+          mode: 'survey',
+          surveyMode,
         })
-        const table = normalizeComparisonTable(raw, digests)
+        const cached = await readCompareCache(key)
+        if (cached?.table?.surveyMode === surveyMode) {
+          const cachedTable = { ...cached.table, preflight }
+          sendJson(res, 200, {
+            kind: 'survey-table',
+            table: cachedTable,
+            preflight,
+            digests,
+            cached: true,
+            savedAt: cached.savedAt,
+          })
+          return
+        }
+        const prompt = buildSurveyPrompt({ digests, surveyMode, preflight })
+        let raw = null
+        let modelError = null
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          try {
+            raw = await chatJsonImpl({
+              system: prompt.system,
+              user: prompt.user,
+              maxTokens: prompt.maxTokens,
+            })
+            modelError = null
+            break
+          } catch (error) {
+            modelError = error
+            if (!/JSON|Unexpected token|Expected ','|position \d+/i.test(String(error?.message || error))) {
+              break
+            }
+          }
+        }
+        if (!raw) {
+          sendJson(res, 200, {
+            kind: 'table-error',
+            retryable: true,
+            message:
+              '模型没有返回合法的对照表结构，已停止本次生成；可稍后重试，论文与批注未受影响。',
+            diagnostics: String(modelError?.message || modelError || '').slice(0, 240),
+            preflight,
+            digests,
+            cached: false,
+          })
+          return
+        }
+        const table = normalizeComparisonTable(raw, digests, { surveyMode, preflight })
         await writeCompareCache(key, {
           mode: 'survey',
+          surveyMode,
           jobIds: digests.map((digest) => digest.jobId),
           table,
         })
-        sendJson(res, 200, { table, digests, cached: false })
+        sendJson(res, 200, { kind: 'survey-table', table, preflight, digests, cached: false })
+        return
+      }
+      if (route.type === 'compare-survey-report') {
+        if (req.method !== 'POST') {
+          sendError(res, 405, '只接受 POST')
+          return
+        }
+        const body = await readJsonBody(req, MAX_COMPARE_BYTES, '综述报告请求')
+        const digests = await compareDigests(body.jobIds)
+        const surveyMode = normalizeSurveyMode(body.surveyMode)
+        const preflight = assessSurveyCompatibility(digests, surveyMode)
+        const table = body.table
+        if (!table || !Array.isArray(table.fields)) {
+          throw Object.assign(new Error('请先生成并核对七字段对照表。'), { statusCode: 409 })
+        }
+        const report = buildSurveyReport({
+          table: {
+            ...table,
+            surveyMode,
+            preflight,
+            papers:
+              Array.isArray(table.papers) && table.papers.length > 0
+                ? table.papers
+                : digests.map((digest) => ({ jobId: digest.jobId, title: digest.title })),
+          },
+          preflight,
+          title:
+            String(body.title || '').trim() ||
+            SURVEY_MODES[surveyMode].label + '：' +
+              digests.map((digest) => digest.title).join(' × '),
+        })
+        sendJson(res, 200, { report: report.markdown, stats: report.stats, preflight, surveyMode })
         return
       }
       if (route.type === 'compare-citation') {
@@ -3273,11 +4821,16 @@ export function createPaperApi({
         const mode = body.mode === 'citation' ? 'citation' : 'survey'
         const digests = await compareDigests(body.jobIds)
         const ids = digests.map((digest) => digest.jobId)
+        const surveyMode = normalizeSurveyMode(body.surveyMode)
+        const preflight =
+          mode === 'survey' ? assessSurveyCompatibility(digests, surveyMode) : null
         let citing = null
         if (mode === 'citation') citing = await resolveCiting(ids, body.citing)
         let table = null
         if (mode === 'survey') {
-          const cached = await readCompareCache(compareKey({ jobIds: ids, mode: 'survey' }))
+          const cached = await readCompareCache(
+            compareKey({ jobIds: ids, mode: 'survey', surveyMode }),
+          )
           table = cached?.table || null
         }
         const message = buildCompareMessage({
@@ -3287,6 +4840,8 @@ export function createPaperApi({
           question: body.question,
           table,
           annotations: body.annotations,
+          surveyMode,
+          preflight,
         })
         sendJson(res, 200, {
           message,
@@ -3294,6 +4849,8 @@ export function createPaperApi({
           jobIds: ids,
           titles: digests.map((digest) => digest.title),
           citing,
+          surveyMode,
+          preflight,
         })
         return
       }
@@ -3304,12 +4861,15 @@ export function createPaperApi({
         }
         const body = await readJsonBody(req, MAX_COMPARE_BYTES, '对照提问')
         const mode = body.mode === 'citation' ? 'citation' : 'survey'
+        const surveyMode = normalizeSurveyMode(body.surveyMode)
         const question = String(body.question || '').trim()
         if (!question) {
           throw Object.assign(new Error('对照工作台需要一个问题'), { statusCode: 400 })
         }
         const digests = await compareDigests(body.jobIds)
         const ids = digests.map((digest) => digest.jobId)
+        const preflight =
+          mode === 'survey' ? assessSurveyCompatibility(digests, surveyMode) : null
         let citing = null
         if (mode === 'citation') citing = await resolveCiting(ids, body.citing)
         const prompt = buildCompareChatPrompt({
@@ -3319,6 +4879,8 @@ export function createPaperApi({
           annotations: body.annotations,
           question,
           history: body.history,
+          surveyMode,
+          preflight,
         })
         let answer
         try {
@@ -3337,6 +4899,8 @@ export function createPaperApi({
           answer: String(answer || '').trim(),
           mode,
           jobIds: ids,
+          surveyMode,
+          preflight,
           at: new Date().toISOString(),
         })
         return
@@ -3484,7 +5048,7 @@ export function createPaperApi({
         return
       }
       if (route.type === 'annotations') {
-        const jobDir = await jobDirFor(route.jobId)
+        const jobDir = await libraryDirFor(route.jobId)
         if (!jobDir) {
           sendError(res, 404, '这篇论文的作业目录不在了。')
           return
@@ -3519,9 +5083,43 @@ export function createPaperApi({
           sendJson(res, 200, publicJob(job))
           return
         }
+        const libraryDir = await libraryDirFor(route.jobId)
+        if (libraryDir) {
+          const entry = await readLibraryEntry(route.jobId, libraryDir, null)
+          if (entry) {
+            const legacyStatus =
+              entry.status === 'ready'
+                ? 'done'
+                : entry.status === 'queued' || entry.status === 'converting'
+                  ? 'running'
+                  : entry.status === 'imported'
+                    ? 'idle'
+                    : 'failed'
+            sendJson(res, 200, {
+              id: entry.jobId,
+              kind: 'pdf-import',
+              pipeline: entry.pipeline,
+              status: legacyStatus,
+              stage: entry.status === 'ready' ? 'done' : entry.stage,
+              libraryStatus: entry.status,
+              message: entry.message,
+              originalName: entry.originalName,
+              startedAt: entry.importedAt,
+              finishedAt: entry.readyAt || null,
+              error: entry.error,
+              metadata: entry.metadata,
+              artifacts: entry.artifacts,
+              docUrl:
+                entry.status === 'ready'
+                  ? API_PREFIX + 'jobs/' + route.jobId + '/mirrordoc.json'
+                  : null,
+            })
+            return
+          }
+        }
         const jobDir = await jobDirFor(route.jobId)
         if (!jobDir) {
-          sendError(res, 404, '这个抄写任务已经不在内存里了，陛下重新选一次 PDF 吧。')
+          sendError(res, 404, '文档不存在，或已经被移到回收站。')
           return
         }
         sendJson(res, 200, await publicJobFromDisk(route.jobId, jobDir))
@@ -3569,6 +5167,8 @@ export function createPaperApi({
       }
       children.clear()
       jobs.clear()
+      conversionQueue.length = 0
+      queuedConversionIds.clear()
     },
     jobs,
   }

@@ -53,6 +53,31 @@ test('reference 字段：DOI、年份与标题提示', () => {
   assert.equal(fields.doi, '10.1016/s0140-6736(03)14544-3')
   assert.equal(fields.year, '2003')
   assert.match(fields.title, /Predictive ability/i)
+  assert.match(fields.venue, /Lancet/i)
+})
+
+test('reference 字段：标题尾部 CoRR/arXiv 编号不进入标题查询', () => {
+  const fields = extractReferenceFields(
+    'Gema et al. (2024) Are we done with MMLU? CoRR, abs/2406.04127, 2024. URL https://doi.org/10.48550/arXiv.2406.04127.',
+  )
+  assert.equal(fields.title, 'Are we done with MMLU?')
+  assert.equal(fields.arxiv, '2406.04127')
+})
+
+test('reference 字段：作者姓名列表不会被误认成标题', () => {
+  const fields = extractReferenceFields(
+    'Mattern et al. (2023) Justus Mattern, Fatemehsadat Mireshghallah, Zhijing Jin, Bernhard Schoelkopf, Mrinmaya Sachan, and Taylor Berg-Kirkpatrick. 2023. Membership Inference Attacks against Language Models via Neighbourhood Comparison. In Findings of ACL 2023.',
+  )
+  assert.match(fields.title, /Membership Inference Attacks/)
+  assert.doesNotMatch(fields.title, /^Justus Mattern/)
+})
+
+test('reference 字段：arXiv preprint 占位句不会覆盖真实标题', () => {
+  const fields = extractReferenceFields(
+    'Lightman et al. (2023) H. Lightman, V. Kosaraju, Y. Burda. Let’s verify step by step. arXiv preprint arXiv:2305.20050, 2023.',
+  )
+  assert.equal(fields.title, 'Let’s verify step by step')
+  assert.equal(fields.arxiv, '2305.20050')
 })
 
 test('被引摘要：优先全文段落，缺全文时退回摘要', () => {

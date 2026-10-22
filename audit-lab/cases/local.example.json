@@ -1,0 +1,22 @@
+[
+  {
+    "id": "my-paper",
+    "titleIncludes": "Replace with a unique title fragment",
+    "sourcePath": "C:/papers/my-paper.pdf",
+    "optional": true,
+    "expect": {
+      "pages": 10,
+      "minBlockTypes": {
+        "paragraph": 20,
+        "heading": 4
+      },
+      "requiredText": [
+        "Replace with a sentence that must survive extraction"
+      ],
+      "forbiddenText": [
+        "(cid:",
+        "�"
+      ]
+    }
+  }
+]

@@ -7,3 +7,5 @@ __pycache__/
 *.pyc
 /UI/
 /dist/
+audit-lab/work/
+audit-lab/cases/private/

@@ -183,5 +183,69 @@
         ]
       ]
     }
+  },
+  {
+    "id": "tabular-embeddings-survey",
+    "titleIncludes": "Embeddings for Tabular Data: A Survey",
+    "sourcePath": "工具/gen/B4-20261022/sources/tabular-embeddings-survey.pdf",
+    "optional": true,
+    "expect": {
+      "pages": 25,
+      "blockTypes": {
+        "figure": 13,
+        "table": 2,
+        "equation": 5,
+        "reference": 68
+      },
+      "minBlockTypes": {
+        "paragraph": 130,
+        "heading": 10
+      },
+      "referenceRange": [1, 68],
+      "tableStructures": [
+        {
+          "label": "Table 1",
+          "rowCount": 13,
+          "columnCount": 3,
+          "requiredCells": [
+            "TaskCoverage",
+            "Classification",
+            "Assignclasslabelstoproblem-domainexamples",
+            "[52,21]",
+            "TableContentPopulation"
+          ],
+          "requiredRowSpans": [
+            { "text": "SemanticParsing", "minSpan": 3 },
+            { "text": "TableMetadata", "minSpan": 2 }
+          ]
+        },
+        {
+          "label": "Table 2",
+          "rowCount": 8,
+          "columnCount": 3,
+          "requiredCells": [
+            "Dataset",
+            "WDCWebTablesCorpus",
+            "TQA,SP",
+            "Itcontainsemi-structuredtablesandquestion-answerpair"
+          ]
+        }
+      ],
+      "requiredText": [
+        "Table 1: List of Downstream Tasks",
+        "Table 2: Popular Tabular Datasets",
+        "Task Coverage Representative Examples",
+        "Dataset Task Coverage Modalities"
+      ],
+      "forbiddenText": [],
+      "order": [
+        [
+          "2 Definitions and Preliminaries",
+          "3 Learning on Structured Data: Challenges",
+          "4 Related Work",
+          "References"
+        ]
+      ]
+    }
   }
 ]

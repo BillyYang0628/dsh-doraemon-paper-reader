@@ -1,6 +1,6 @@
 {
-  "version": 1,
-  "purpose": "B0 annotation Q&A behavior baseline",
+  "version": 3,
+  "purpose": "B6 annotation Q&A contract and regression",
   "defaultContract": [
     "answer the user's direct question first",
     "explain and analyze before criticizing",
@@ -14,49 +14,170 @@
       "prompt": "解释这段里的 MobileViT 是什么，作者为什么用它。",
       "expectedFocus": "direct explanation from the selected passage",
       "critiqueAllowedAtEnd": false,
-      "webSearchExpected": false
+      "webSearchExpected": false,
+      "answerPolicy": { "evidenceMode": "allow-external" },
+      "requireCitation": true,
+      "mustMention": ["轻量", "混合", "卷积", "全局", "局部", "效率"],
+      "forbidden": ["作者认为 MobileViT 是纯卷积网络"],
+      "source": {
+        "paperTitle": "A Smart AIoT-Based Mobile Application for Plant Disease Detection and Environment Management in Small-Scale Farms Using MobileViT",
+        "blockId": "b0051",
+        "page": 6,
+        "section": "3.4. MobileViT",
+        "text": "MobileViT is lightweight hybrid model that combines vision transformer blocks (MobileViT) for global context with convolutional blocks (MobileNetV2) for local feature extraction. Vision transformers leverage self-attention mechanisms to weigh relationships between all image patches, allowing them to capture long-range dependencies and global context that convolutional blocks alone cannot efficiently model. MobileViT can thus reliably extract both local and global features, which improves recognition of complex patterns, occlusions, and subtle variations in images, while still remaining lightweight and efficient for mobile deployment."
+      }
     },
     {
       "id": "method-understanding",
       "prompt": "把这段方法按输入、处理、输出重新讲清楚。",
       "expectedFocus": "understandable reconstruction of the method",
       "critiqueAllowedAtEnd": false,
-      "webSearchExpected": false
+      "webSearchExpected": false,
+      "answerPolicy": { "evidenceMode": "allow-external" },
+      "requireCitation": true,
+      "mustMention": ["卷积", "patch", "transformer", "折回", "1×1", "重复"],
+      "forbidden": ["MobileViT 完全不使用卷积"],
+      "source": {
+        "paperTitle": "A Smart AIoT-Based Mobile Application for Plant Disease Detection and Environment Management in Small-Scale Farms Using MobileViT",
+        "blockId": "b0053",
+        "page": 7,
+        "section": "3.4. MobileViT",
+        "text": "In the MobileViT block, the input is first passed through standard convolutional layers to extract low-level spatial features. Next, the output feature map is unfolded into non-overlapping patches that are input into a compact transformer block for global feature extraction. Finally, the processed tokens are folded back into a 2-dimensional feature map and another set of convolutions is applied to merge the global features. The MobileViT block is repeated multiple times within the architecture, allowing the network to progressively integrate local and global feature representations across different spatial resolutions. Finally, 1 × 1 convolution is applied to fuse the feature maps and reduce dimensionality before passing them to the final classification layer."
+      }
     },
     {
       "id": "figure-table-reading",
       "prompt": "这个表最重要的比较结论是什么？",
       "expectedFocus": "table reading tied to exact rows and values",
       "critiqueAllowedAtEnd": false,
-      "webSearchExpected": false
+      "webSearchExpected": false,
+      "answerPolicy": { "evidenceMode": "allow-external" },
+      "requireCitation": true,
+      "mustMention": ["99.5", "97.5", "MobileViT", "MobileNetV3"],
+      "forbidden": ["MobileNetV3 的准确率高于 MobileViT"],
+      "source": {
+        "paperTitle": "A Smart AIoT-Based Mobile Application for Plant Disease Detection and Environment Management in Small-Scale Farms Using MobileViT",
+        "blockId": "b0097",
+        "page": 11,
+        "section": "5.1.2. Plant Disease Classification",
+        "text": "For the test dataset, MobileViT-XXSmall (acc.: 99.5%) outperformed MobileNetV3-Small (acc.: 97.5%) by ~2% demonstrating that hybrid lightweight models more effectively captured relevant information for reliable plant disease classification."
+      }
     },
     {
       "id": "section-role",
       "prompt": "这一段在整篇论文里起什么作用？",
       "expectedFocus": "connection to the paper's argument and neighboring sections",
       "critiqueAllowedAtEnd": false,
-      "webSearchExpected": false
+      "webSearchExpected": false,
+      "answerPolicy": { "evidenceMode": "allow-external" },
+      "requireCitation": true,
+      "mustMention": ["AIoT", "检测", "环境监测", "MobileViT"],
+      "forbidden": ["这一段只是文献数量统计"],
+      "source": {
+        "paperTitle": "A Smart AIoT-Based Mobile Application for Plant Disease Detection and Environment Management in Small-Scale Farms Using MobileViT",
+        "blockId": "b0029",
+        "page": 4,
+        "section": "2. Related Works",
+        "text": "In this work, an AIoT-based mobile application was introduced that combines (1) plant disease detection using the hybrid lightweight MobileViT model, with (2) IoT-based environmental monitoring and control. For plant disease detection, leaf images were first separated from non-leaf images in order to increase the system’s robustness. Next, the lightweight hybrid MobileViT model was utilized to efficiently extract both local and global features. MobileViT was selected for its balance between performance and computational efficiency making it particularly suitable for resource-constrained AIoT-based applications."
+      }
     },
     {
       "id": "inspiration-no-direction",
       "prompt": "这段里有什么值得继续做的点子？",
       "expectedFocus": "evidence-grounded ideas and possible next steps",
       "critiqueAllowedAtEnd": true,
-      "webSearchExpected": true
+      "webSearchExpected": true,
+      "answerPolicy": { "evidenceMode": "allow-external" },
+      "requireCitation": true,
+      "mustMention": ["MobileViT", "数据", "实验", "风险"],
+      "forbidden": ["声称已经完成全网查新"],
+      "source": {
+        "paperTitle": "A Smart AIoT-Based Mobile Application for Plant Disease Detection and Environment Management in Small-Scale Farms Using MobileViT",
+        "blockId": "b0053",
+        "page": 7,
+        "section": "3.4. MobileViT",
+        "text": "In the MobileViT block, the input is first passed through standard convolutional layers to extract low-level spatial features. Next, the output feature map is unfolded into non-overlapping patches that are input into a compact transformer block for global feature extraction. Finally, the processed tokens are folded back into a 2-dimensional feature map and another set of convolutions is applied to merge the global features. The MobileViT block is repeated multiple times within the architecture, allowing the network to progressively integrate local and global feature representations across different spatial resolutions."
+      }
     },
     {
       "id": "explicit-critique",
       "prompt": "请批判性评价这段方法设计和实验是否充分。",
       "expectedFocus": "critique is explicitly requested and should be substantive",
       "critiqueAllowedAtEnd": true,
-      "webSearchExpected": false
+      "webSearchExpected": false,
+      "answerPolicy": { "evidenceMode": "allow-external" },
+      "requireCitation": true,
+      "mustMention": ["比较", "MobileNetV3", "数据集", "局限"],
+      "forbidden": ["只评价写作风格，不评价实验设计"],
+      "source": {
+        "paperTitle": "A Smart AIoT-Based Mobile Application for Plant Disease Detection and Environment Management in Small-Scale Farms Using MobileViT",
+        "blockId": "b0059",
+        "page": 8,
+        "section": "3.5. Experimental Setup",
+        "text": "In the present study, two lightweight models were compared for plant disease classification: MobileNetV3-Small and MobileViT-XXSmall. Additionally, MobileNetV3-Small was utilized for the leaf/non-leaf experiments. MobileNetV3-Small was implemented using Keras with TensorFlow 2.11, whereas MobileViT-XXSmall was implemented using the Hugging Face Library with PyTorch 2.7.1. For both networks, the ImageNet pretrained versions were utilized, with new classification heads added to adapt the networks to the target task. An Adam optimizer with a learning rate of 10−3 and 10−4 was utilized for the MobileNetV3-Small and MobileViT-XXSmall networks, respectively. Cross entropy loss function and sigmoid classifier were considered in all experiments. Batch sizes of 64 and 32 were utilized, for the MobileNetV3-Small and MobileViT-XXSmall networks, respectively."
+      }
     },
     {
       "id": "paper-only",
       "prompt": "只根据原文解释，不要使用外部资料。",
       "expectedFocus": "strict paper-only answer",
       "critiqueAllowedAtEnd": false,
-      "webSearchExpected": false
+      "webSearchExpected": false,
+      "answerPolicy": { "evidenceMode": "paper-only" },
+      "requireCitation": true,
+      "mustMention": ["MobileViT", "卷积", "transformer", "局部", "全局"],
+      "forbidden": ["根据外部资料", "业界普遍认为"],
+      "source": {
+        "paperTitle": "A Smart AIoT-Based Mobile Application for Plant Disease Detection and Environment Management in Small-Scale Farms Using MobileViT",
+        "blockId": "b0051",
+        "page": 6,
+        "section": "3.4. MobileViT",
+        "text": "MobileViT is lightweight hybrid model that combines vision transformer blocks (MobileViT) for global context with convolutional blocks (MobileNetV2) for local feature extraction. Vision transformers leverage self-attention mechanisms to weigh relationships between all image patches, allowing them to capture long-range dependencies and global context that convolutional blocks alone cannot efficiently model. MobileViT can thus reliably extract both local and global features, which improves recognition of complex patterns, occlusions, and subtle variations in images, while still remaining lightweight and efficient for mobile deployment."
+      }
+    },
+    {
+      "id": "research-mode",
+      "prompt": "解释这段方法，并与我的研究方向关联：我正在研究低功耗边缘设备上的轻量视觉模型，需要兼顾准确率、时延和部署成本。",
+      "expectedFocus": "B7 research mode tail with transferable method and validation ideas",
+      "critiqueAllowedAtEnd": false,
+      "webSearchExpected": false,
+      "answerPolicy": {
+        "evidenceMode": "allow-external",
+        "mode": "research",
+        "researchDirection": "低功耗边缘设备上的轻量视觉模型，兼顾准确率、时延和部署成本。"
+      },
+      "requireCitation": true,
+      "mustMention": ["与你的研究方向", "方法", "数据", "实验", "论文明确支持", "模型推导"],
+      "forbidden": ["论文已经证明该方向可直接部署到所有边缘设备"],
+      "source": {
+        "paperTitle": "A Smart AIoT-Based Mobile Application for Plant Disease Detection and Environment Management in Small-Scale Farms Using MobileViT",
+        "blockId": "b0103",
+        "page": 13,
+        "section": "5.1.2. Plant Disease Classification",
+        "text": "In the present study, the lightweight MobileViT-XXSmall model was chosen for its hybrid architecture combining compact convolutional and transform blocks. This architecture enables the extraction of local and global features without significantly increasing the computational cost. MobileNetV3-Small was thus implemented for the sake of comparing the hybrid model to a reliable purely convolutional network."
+      }
+    },
+    {
+      "id": "inspiration-mode",
+      "prompt": "从这段提出 1–3 个可验证创意，并尝试查新。",
+      "expectedFocus": "B7 inspiration mode with anchored ideas, experiment needs, risk and cautious novelty status",
+      "critiqueAllowedAtEnd": true,
+      "webSearchExpected": true,
+      "answerPolicy": {
+        "evidenceMode": "allow-external",
+        "mode": "inspiration",
+        "researchDirection": ""
+      },
+      "requireCitation": true,
+      "mustMention": ["创意", "blockId", "数据", "实验", "风险"],
+      "forbidden": ["绝对新颖", "没有任何相似研究"],
+      "source": {
+        "paperTitle": "A Smart AIoT-Based Mobile Application for Plant Disease Detection and Environment Management in Small-Scale Farms Using MobileViT",
+        "blockId": "b0053",
+        "page": 7,
+        "section": "3.4. MobileViT",
+        "text": "In the MobileViT block, the input is first passed through standard convolutional layers to extract low-level spatial features. Next, the output feature map is unfolded into non-overlapping patches that are input into a compact transformer block for global feature extraction. Finally, the processed tokens are folded back into a 2-dimensional feature map and another set of convolutions is applied to merge the global features. The MobileViT block is repeated multiple times within the architecture, allowing the network to progressively integrate local and global feature representations across different spatial resolutions."
+      }
     }
   ]
 }

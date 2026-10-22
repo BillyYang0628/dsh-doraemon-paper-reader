@@ -38,7 +38,7 @@ test('B0 AIoT 样本：Algorithm 1 已知失败有 page 与 blockId 事实', asy
 
 test('B0 QA contract：覆盖直接解释、表格、灵感、明确批判和只读原文', async () => {
   const fixture = JSON.parse(await readFile(path.join(ROOT, 'test/fixtures/qa-contract-v1.json'), 'utf8'))
-  assert.equal(fixture.version, 1)
+  assert.equal(fixture.version, 3)
   assert.ok(fixture.defaultContract.length >= 4)
   const ids = fixture.cases.map((item) => item.id)
   for (const required of [
@@ -48,6 +48,8 @@ test('B0 QA contract：覆盖直接解释、表格、灵感、明确批判和只
     'inspiration-no-direction',
     'explicit-critique',
     'paper-only',
+    'research-mode',
+    'inspiration-mode',
   ]) {
     assert.ok(ids.includes(required), 'QA fixture 缺少：' + required)
   }

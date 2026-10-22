@@ -1,6 +1,6 @@
 {
   "name": "dsh-doraemon-paper-reader",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "机器猫论文阅读器（Doraemon Paper Reader）：DSH 插件的论文精读工作台——获取与镜像 · 中英对照 · 引用蓝链 · 划词批注",
@@ -17,6 +17,10 @@
     "assets",
     "cordis.patch.yml",
     "README.md",
+    "INSTALL.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "THIRD_PARTY_NOTICES.md",
     "CHANGELOG.md",
     "LICENSE",
     "icon.svg",
@@ -48,12 +52,24 @@
   },
   "scripts": {
     "test": "node --test",
+    "test:offline": "npm test && python 工具/pdf-pipeline/test_pipeline.py && npm run test:docs && node audit-lab/cli.mjs self-check",
+    "test:docs": "node 工具/check-doc-links.mjs",
     "test:pdf-regression": "python 工具/pdf-pipeline/regression_check.py --keep-going",
     "audit:pdf": "python 工具/pdf-pipeline/audit_structure.py",
+    "audit:lab": "node audit-lab/cli.mjs",
+    "build:citation-corpus": "node 工具/citations/build-corpus.mjs",
+    "eval:citations": "node 工具/citations/evaluate.mjs",
+    "eval:qa": "node 工具/qa/evaluate-contract.mjs",
+    "eval:outline": "node 工具/qa/evaluate-outline.mjs",
+    "eval:survey": "node 工具/qa/evaluate-survey.mjs",
+    "eval:knowledge": "node 工具/qa/evaluate-knowledge.mjs",
     "setup:python": "node 工具/dev/setup-python.mjs",
     "benchmark:pdf": "node 工具/dev/benchmark-pdf.mjs",
-    "verify": "npm test && node 工具/check-doc-links.mjs && npm run test:pdf-regression",
-    "pack:release": "npm pack --pack-destination dist",
-    "release:check": "npm run verify && npm run pack:release"
+    "verify:offline": "npm run test:offline && npm pack --dry-run",
+    "verify": "npm run test:offline && npm run test:pdf-regression",
+    "package:release": "node 工具/release/create-release.mjs",
+    "package:candidate": "node 工具/release/create-release.mjs --allow-dirty",
+    "pack:release": "npm run package:candidate",
+    "release:check": "npm run verify && npm run package:release"
   }
 }

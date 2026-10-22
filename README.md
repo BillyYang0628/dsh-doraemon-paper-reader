@@ -2,7 +2,7 @@
 
 DeepSeek Harness（DSH）插件：**论文精读工作台** —— 获取与镜像 · 中英对照阅读 · 引用蓝链 · 划词批注。
 
-> 状态：**v0.1.0 单篇精读 + 多文本对照 + 论文术语即时查词**（宿主半区可加载；五个页签 kind；
+> 状态：**v0.2.0 GitHub 发布候选：单篇精读 + 三任务多篇综述 + 知识层与检索 + 论文术语即时查词 + 文档管理**（宿主半区可加载；七个页签 kind；
 > PDF 上传/拖入 → 后台镜像构建 → React 阅读页 → 正文/摘要批注 → 段尾气泡高亮 → 刷新/重启恢复 → Figure 视觉问答 → 信息查询/arXiv HTML/OA PDF → 表格二次复核 → 引用蓝链/引用预览/精读承接 → 原文/中文/对照翻译 → 公式 LaTeX/表格单元格译文 → 多轮回译/整篇语义复核 → 回答引用回跳，L0/L2 已实测，见 D-029 / D-031 / D-033 / D-034 / D-035 / D-036 / D-037 / D-038 / D-039 / D-040 / D-041 / D-042 / D-043 / D-044 / D-045 / D-046 / D-047 / D-048 / D-049；
 > **P0 质量与可信度、P1 多文本并行/对照已完成；P2 论文术语即时查词主要闭环完成**：主界面「多篇综述」入口、左侧 8:3 双论文全文（批注/蓝链/原文/中文/对照/术语表/逐字高亮/KaTeX 公式/表格网格）、右侧工作台（对话/Markdown/命令）、可拖动缩放且可多开的表格/论证链/概念图/结构统计/证据覆盖/数据图/汇总浮窗；对照表可人工修订并复制/下载 Markdown，「导出报告」可汇总表格/覆盖度/批注/对话/引用结论；真实引用全链、同篇 VOR/预印本差异、本地归档、术语保存+重译均已通过 L2。**数据图**只接受有原文锚点的数字；**概念图**允许跨论文归纳，但会以虚线明确标成“模型归纳”。单篇与双篇选中词后可即时查本文语境、论文内缩写全称和原段位置；不建生词本，不记录学习数据。**云同步不做**，桌面端已通过应用内插件页安装。路线见 `docs/下一阶段计划.md`。
 > 设计基线见 [`docs/功能框架-v0.md`](docs/功能框架-v0.md)（§7 数据模型 / §11 里程碑 / §12 修订记录 R1）。
@@ -11,7 +11,9 @@ DeepSeek Harness（DSH）插件：**论文精读工作台** —— 获取与镜�
 
 | 文档 | 管什么 |
 |---|---|
+| [`INSTALL.md`](INSTALL.md) | **新用户入口**：全新 DSH 安装、tgz/源码调试、升级回滚、首次 PDF 与故障排查 |
 | [`AGENTS.md`](AGENTS.md) | **协作约定与硬约束**：真实性规则、复用与借鉴规则（运行时零依赖 + 允许照搬底层实现）、命名自占、合规红线、证据规则、坑清单、环境备忘 |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | **开发与自迭代入口**：插件、PDF 管线和独立 audit-lab 的目录边界、测试与发布规则 |
 | [`docs/项目索引.md`](docs/项目索引.md) | 全量文件 + **时效标签**（只有 ✅ 能当现状依据）+ 命名与归档规则 |
 | [`docs/决定台账.md`](docs/决定台账.md) | 决定记录，**与其他文档冲突时以它为准** |
 | [`docs/开发流程.md`](docs/开发流程.md) | 状态阶梯、任务循环、L0–L3 测试分层、**改动生效方式**、DoD |
@@ -19,6 +21,12 @@ DeepSeek Harness（DSH）插件：**论文精读工作台** —— 获取与镜�
 | [`docs/P1-多文本对照设计.md`](docs/P1-多文本对照设计.md) | P1 三种对照模式、8:3 工作台、证据/归纳边界、产物分型和验收口径 |
 | [`docs/P2-术语即时查词设计.md`](docs/P2-术语即时查词设计.md) | P2 查词范围、论文内定义/术语表/模型分层、临时缓存与验收口径 |
 | [`docs/P4-工程化与发布.md`](docs/P4-工程化与发布.md) | Python 受管环境、缓存治理、任务取消、安装/升级/卸载/回滚与发布检查 |
+| [`docs/B5-候选检索与引用体验-20261022.md`](docs/B5-候选检索与引用体验-20261022.md) | 多路召回、可解释排序、置信度、60 条分层回归种子、分片指标与失败回灌 |
+| [`docs/B6-批注问答契约-20261022.md`](docs/B6-批注问答契约-20261022.md) | 先答问题、克制批判、理解后重组、回答证据模式与 7 个真实段落回归 |
+| [`docs/B7-语义目录与研究灵感模式-20261022.md`](docs/B7-语义目录与研究灵感模式-20261022.md) | 两层语义目录、三态阅读模式、研究方向与谨慎文献查新 |
+| [`docs/B8-文档管理-20261022.md`](docs/B8-文档管理-20261022.md) | 持久文档状态、批量导入、按需转义、版本组、回收站与真实 DSH 回归 |
+| [`docs/B9-多篇综述工作流-20261022.md`](docs/B9-多篇综述工作流-20261022.md) | 方法对照、研究缺口、证据报告、可比性预检与无出处事实门禁 |
+| [`docs/P3-知识层与检索-20261022.md`](docs/P3-知识层与检索-20261022.md) | 跨论文正文/批注/译文/术语/引用检索、证据问答、引用图谱、导出与阅读档案 |
 | [`docs/界面风格-v0.md`](docs/界面风格-v0.md) | **界面风格指南（做界面前先读）**：色板实测、像素风、圆角、吉祥物插画系统、文案语气、主界面结构 |
 
 ## 目录结构
@@ -30,12 +38,15 @@ src/            宿主半区（Cordis 插件）
   index.js        插件壳：apply(ctx)
   identifiers.js  纯函数：把输入统一成论文标识符（DOI/arXiv/PMID/标题）
   papers.js       PDF 导入/后台任务、论文库、批注存档、静态产物
+  library.js      文档生命周期、版本分组与公开管理模型
   annotations.js  批注批次、摘要、doraemon_read_annotations 工具
   client.js       浏览器半区（单文件、无构建）：主界面 + 两条入口 + 入口小图标
   assets.js       纯函数：静态资源路由的穿越栅栏 / 扩展名白名单 / ETag
 assets/         随包发布的界面资产（透明角色状态、精灵图与小物件 WebP；源图不进仓库）
+audit-lab/      独立 PDF 结构审计实验室（不进入插件安装包，可单独发布）
 test/           L0 单元测试（node --test）
 工具/           开发脚本（PDF/HTML 管线、e2e、预览与文档检查）
+.github/        GitHub Actions：离线验证与发布候选构建
 icon.svg        插件图标（清单 dsh.icon 引用）
 cordis.patch.yml  bundle 层：把自己插入 profile
 ```
@@ -61,6 +72,9 @@ PDF 管线默认使用受管环境 `$DSH_HOME/doraemon-paper-reader/python-env/`
 
 ## 论文库与持久化
 
+- 主界面「文档管理」支持一次选择/拖入多个 PDF；轻量入库只保存原文件和 SHA-256，不自动启动全部转义；
+- 点击未转义文档后才进入单并发队列；相同文件哈希不会重复保存，不同版本并列展示；
+- 回收站只移动对应作业目录，原 PDF、批注、译文和术语表可一起恢复；
 - 主界面下方有「最近论文」列表：标题、作者、DOI、批注数；点击直接打开该论文的阅读页；
 - 作业目录本身就是论文库：`$DSH_HOME/doraemon-paper-reader/jobs/<jobId>/` 里的 `paper-summary.json` 提供元数据，`annotations.json` 保存这篇论文的批注；
 - 批注新增/修改/发送/删除后，浏览器端防抖写回 `annotations.json`；刷新页面或重启 DSH 后，阅读页会从磁盘恢复段尾气泡与历史批注；
@@ -74,6 +88,7 @@ PDF 管线默认使用受管环境 `$DSH_HOME/doraemon-paper-reader/python-env/`
   - 严格正式版：只查元数据并给 `doi.org` / 官方页面链接，不擅自用预印本替代；已有本地副本会另外给出“打开已有本地副本”；
   - 可用预印本/OA：按 `arXiv HTML → arXiv PDF → 合法 OA PDF → metadata-only` 取回；
 - 标题/多字段查询先给候选列表，候选可显示 OA 标记与已有本地副本；
+- 候选由 OpenAlex、Crossref、DataCite、arXiv 多路召回后去重排序；首位用“最可能匹配”文字标签、匹配分和高/中/低置信度解释原因，分数不是概率；前两项接近时保留并列提示；
 - 来源记录 `route / license / version / fetchedAt / sha256`，阅读页显示来源与版本徽标；
 - 没有合法全文时只给元数据卡和官方链接，不抓付费墙、不绕过 403/验证码。
 
@@ -82,6 +97,8 @@ PDF 管线默认使用受管环境 `$DSH_HOME/doraemon-paper-reader/python-env/`
 - 选中正文或摘要会出现「问大肥鱼」+ 默认空白的问题框（只给 placeholder）；点它把批注加入主对话输入区上方的批注条；
 - 「问大肥鱼」浮层使用文档坐标的恒定 8px 偏移逐帧跟随；顶部以阅读页工具栏的实际下沿（含横线）为界，到达上/下边界才夹住，选区回到视口内立即恢复原偏移（无过渡延迟）；
 - 批注条只负责收集/编辑批注；**不再有「整体问题」文本框，也没有独立的「发送批注」按钮**。用户在主输入框写问题，按回车或点主发送键，批注会随这条消息一起发送；
+- 批注条提供“默认精读 / 只根据原文”证据范围：前者允许外部补充但必须标来源，后者禁止外部知识写成论文结论；用户问题里的“只根据原文”优先覆盖 UI；
+- 阅读目录会后台生成两层语义分组，原文 heading、blockId 和顺序由 MirrorDoc 校验；目录下可切换默认精读、研究模式、灵感模式，研究方向只保存在本地，灵感查新只给出“高度相似 / 部分相关 / 当前检索未发现”；
 - 支持跨多段选区与多次选区累积；图表/公式右键直接弹出批注框；图表与文本一起框选会作为同一批注的多段；
 - 特殊块（Table / Figure / Equation）右键后可正常点进批注框打字；批次里会带上 `label`（如 `Table 1`）、`asset`、只读 `assetPath` 与原块文本，摘要也优先显示 `Table 1` / `Figure 1` / `Equation 1`；模型需要看图时可自行对 `assetPath` 调用 `read_image`，不会无条件把大图塞进每次请求；
 - 上下文包含标题、DOI/arXiv、版本戳、页码、原文、前后文、同页图表/公式，以及 `paper-summary.json`（也在 `MirrorDoc.meta.brief`）；
@@ -138,9 +155,21 @@ PDF 管线在第一次提取后会自动跑 `reconcile_layout.py` 做二次格�
 
 ## 安装
 
-- **桌面端**：DSH 桌面窗口 →「插件」→「添加插件」→ 填本仓库绝对目录或发布包路径 → 安装 →「立即启用」。日常 desktop profile 由应用自己的插件管理器写入，不手改。
+完整步骤见 [`INSTALL.md`](INSTALL.md)。
+
+- **全新桌面端**：DSH 桌面窗口 →「插件」→「添加插件」→ 选择发布 tgz 或仓库绝对目录 → 安装 →「立即启用」。日常 desktop profile 由应用自己的插件管理器写入，不手改。
+- **命令行 profile**：`dsh plugin --profile dev add D:\downloads\dsh-doraemon-paper-reader-0.2.0.tgz`。
 - **开发 profile**：`dsh plugin --profile dev add link:D:\DSH-Plugins\dsh-doraemon-paper-reader`。
-- **离线分享**：`npm run pack:release` 生成 `dist/dsh-doraemon-paper-reader-0.1.0.tgz`；KaTeX JS/CSS/字体已随包，普通用户不需要额外安装前端依赖。
+- **本地候选包**：`npm run package:candidate` 生成两个独立 tgz、`release-manifest.json` 和 `SHA256SUMS.txt`；KaTeX JS/CSS/字体已随插件包，普通用户不需要额外安装前端依赖。
+
+插件安装包与 PDF 审计实验室分开：
+
+```text
+dist/dsh-doraemon-paper-reader-0.2.0.tgz
+dist/dsh-doraemon-paper-reader-audit-lab-0.2.0.tgz
+```
+
+前者只含 DSH 运行所需内容；后者不包含 UI、角色插画或插件入口，适合用户独立修改审计规则与案例。
 
 ## 运行环境与存储
 
@@ -160,17 +189,24 @@ PDF 管线在第一次提取后会自动跑 `reconcile_layout.py` 做二次格�
 ## 开发回路
 
 ```powershell
+# 0) 不要求真实论文样本的离线验证
+npm run verify:offline
+
 # 1) 装进开发 profile（链接方式，改完无需发布）
 dsh plugin --profile dev add link:D:\DSH-Plugins\dsh-doraemon-paper-reader
 
-# 2) 跑 L0 单元测试（不需要 Harness）
-npm test
+# 2) 完整验证：L0 + 文档 + Python 单测 + 本机七篇真实 PDF 回归
+npm run verify
 
-# 2.1) 三篇异形论文的真实 PDF 回归（Sensors / Plague / PLOS）
+# 2.1) 真实 PDF 回归也可单独跑
 npm run test:pdf-regression
 
 # 3) 起开发 profile 观察加载日志
 dsh dev
+
+# 4) 独立审计实验室
+npm run audit:lab -- self-check
+npm run audit:lab -- extract .\paper.pdf --out .\audit-lab\work\paper
 ```
 
 改动宿主半区（`src/*.js`）后重启 profile 生效。浏览器半区（`src/client.js`）是单文件、无构建，

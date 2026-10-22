@@ -300,7 +300,7 @@ def detect_unattached_captions(blocks: List[Dict[str, Any]]) -> List[Dict[str, A
         findings.append(
             finding(
                 f"{kind}.caption-unattached",
-                "warning",
+                "error" if kind == "table" else "warning",
                 f"{label} 有题注但没有对应视觉资产",
                 blockId=block.get("id"),
                 page=block.get("page"),
@@ -364,6 +364,8 @@ def detect_reading_order(lines: List[Dict[str, Any]]) -> tuple[List[Dict[str, An
         if line.get("role") not in ("prose", "heading"):
             continue
         if line.get("columnScope") != "full":
+            continue
+        if not line.get("columnSplit"):
             continue
         text = normalized(line.get("text"))
         if len(text) < 40:
@@ -809,6 +811,20 @@ def detect_tables(
         ]
         table_text = str(block.get("tableText") or "")
         explicit_newlines = table_text.count("\n")
+        structure = block.get("tableStructure") or {}
+        structure_rows = list(structure.get("rows") or [])
+        structure_columns = int(structure.get("columnCount") or 0)
+        nonempty_cells = sum(
+            1
+            for row in structure_rows
+            for cell in row.get("cells") or []
+            if normalized(cell)
+        )
+        cell_total = max(
+            1,
+            int(structure.get("rowCount") or len(structure_rows))
+            * max(1, structure_columns),
+        )
         item = {
             "blockId": block.get("id"),
             "page": block.get("page"),
@@ -818,6 +834,13 @@ def detect_tables(
             "tableTextChars": len(normalized(table_text)),
             "explicitNewlines": explicit_newlines,
             "rotated": bool(block.get("rotatedPage")),
+            "continuation": bool(block.get("continuation")),
+            "continuationGroup": block.get("continuationGroup") or "",
+            "continuationOfPage": block.get("continuationOfPage"),
+            "structureRows": len(structure_rows),
+            "structureColumns": structure_columns,
+            "structureCellCoverage": round(nonempty_cells / cell_total, 4),
+            "mergedCells": int(structure.get("mergedCells") or 0),
         }
         summary.append(item)
         if not block.get("asset"):
@@ -839,6 +862,64 @@ def detect_tables(
                     page=block.get("page"),
                     label=block.get("label"),
                     sourceTableBodyLines=len(body_ids),
+                )
+            )
+        if len(body_ids) >= 4 and (
+            len(structure_rows) < 2 or structure_columns < 2
+        ):
+            findings.append(
+                finding(
+                    "table.structure-missing",
+                    "error",
+                    "表格保留了多行源文本，但没有恢复出至少 2×2 的行列结构",
+                    blockId=block.get("id"),
+                    page=block.get("page"),
+                    label=block.get("label"),
+                    sourceTableBodyLines=len(body_ids),
+                    structureRows=len(structure_rows),
+                    structureColumns=structure_columns,
+                )
+            )
+        if block.get("continuationOfPage") and not any(
+            candidate.get("type") == "table"
+            and int(candidate.get("page") or 0) == int(block.get("continuationOfPage") or 0)
+            for candidate in blocks
+        ):
+            findings.append(
+                finding(
+                    "table.continuation-without-parent",
+                    "error",
+                    "续表块找不到前一页的父表",
+                    blockId=block.get("id"),
+                    page=block.get("page"),
+                    label=block.get("label"),
+                    continuationOfPage=block.get("continuationOfPage"),
+                )
+            )
+        if block.get("continuationIndex") and not block.get("continuationGroup"):
+            findings.append(
+                finding(
+                    "table.continuation-unlinked",
+                    "error",
+                    "续表没有 continuationGroup",
+                    blockId=block.get("id"),
+                    page=block.get("page"),
+                    label=block.get("label"),
+                )
+            )
+        if structure_rows and any(
+            len(row.get("cells") or []) != structure_columns for row in structure_rows
+        ):
+            findings.append(
+                finding(
+                    "table.row-width-mismatch",
+                    "error",
+                    "恢复出的表格存在与 columnCount 不一致的行",
+                    blockId=block.get("id"),
+                    page=block.get("page"),
+                    label=block.get("label"),
+                    columnCount=structure_columns,
+                    rowWidths=[len(row.get("cells") or []) for row in structure_rows],
                 )
             )
         bbox = [float(value) for value in block.get("bbox") or []]
@@ -879,7 +960,7 @@ def detect_tables(
                 )
                 cursor_bottom = max(cursor_bottom, float(line.get("bottom") or top))
             item["tableLikeRowsOutsideCrop"] = len(table_like_rows)
-            if table_like_rows:
+            if len(table_like_rows) >= 4:
                 findings.append(
                     finding(
                         "table.crop-cuts-data-rows",

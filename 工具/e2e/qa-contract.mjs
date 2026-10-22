@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// B0：把批注问答的固定测试问题生成人工/模型评分表。
-// 本脚本不调用模型，避免在基线阶段烧 key；后续可接 `--answers` 做自动评分。
+// B0/B6：把批注问答固定问题集生成人工评分表。
+// 真实模型回答与确定性探针由 `工具/qa/evaluate-contract.mjs` 执行。
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -35,11 +35,13 @@ const lines = [
   '',
   '## Cases',
   '',
-  '| ID | Prompt | Expected focus | Critique at end | Web search | Direct answer | Understood/rebuilt | Evidence boundary | Notes |',
-  '|---|---|---|---|---|---|---|---|---|',
+  '| ID | Prompt | Evidence mode | Source | Expected focus | Critique at end | Web search | Direct answer | Understood/rebuilt | Evidence boundary | Notes |',
+  '|---|---|---|---|---|---|---|---|---|---|---|',
   ...fixture.cases.map(
     (item) =>
-      `| ${item.id} | ${item.prompt.replace(/\|/g, '\\|')} | ${item.expectedFocus.replace(/\|/g, '\\|')} | ${
+      `| ${item.id} | ${item.prompt.replace(/\|/g, '\\|')} | ${item.answerPolicy?.evidenceMode || 'allow-external'} | ${
+        item.source?.blockId || ''
+      } | ${item.expectedFocus.replace(/\|/g, '\\|')} | ${
         item.critiqueAllowedAtEnd ? 'allowed' : 'not default'
       } | ${item.webSearchExpected ? 'expected' : 'not required'} | [ ] | [ ] | [ ] |  |`,
   ),

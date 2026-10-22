@@ -81,6 +81,13 @@ try {
   await page.getByRole('button', { name: '去找论文', exact: true }).click()
   await page.locator('.dpr-candidate').first().waitFor({ state: 'visible', timeout: 30000 })
   if ((await page.locator('.dpr-candidate').count()) === 0) errors.push('多字段查询没有候选结果')
+  if ((await page.locator('.dpr-candidate.is-primary').count()) !== 1) {
+    errors.push('查询候选没有唯一主候选')
+  }
+  const candidateText = (await page.locator('.dpr-candidate').first().innerText()).replace(/\s+/g, ' ')
+  if (!/匹配分 \d+\/100/.test(candidateText) || !/[高中低]置信/.test(candidateText)) {
+    errors.push('查询候选没有显示匹配分与置信度：' + candidateText.slice(0, 240))
+  }
   await page.screenshot({ path: path.join(outDir, 'lookup-candidates.png') })
 
   // 3) arXiv HTML：精确查询 → 取回 → 阅读页

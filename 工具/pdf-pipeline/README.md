@@ -36,7 +36,8 @@ node 工具/pdf-pipeline/screenshot.mjs `
   "工具/gen/pdf-html-spike-20261019/shots"
 ```
 
-六篇异形论文的真实回归（Sensors / Plague / PLOS / AIoT，以及本地存在时自动加入的 IoT 算法型 / Twitter 多表综述）：
+七篇异形论文的真实回归（Sensors / Plague / PLOS / AIoT / IoT 算法型 /
+Twitter 多表综述，以及本地存在时自动加入的 Tabular Embeddings 无框表样本）：
 
 ```powershell
 npm run test:pdf-regression
@@ -50,9 +51,11 @@ npm run audit:pdf -- <after-dir> --out <audit-dir> --baseline <before-audit.json
 ```
 
 审计输出 `audit-report.json` / `audit-report.md`，规则覆盖页眉污染、假标题、Abstract、
-算法控制流、段落断裂、连字符、参考文献、表格裁剪/文字行边界、跨栏阅读顺序、
-未表达的内容分隔线和报告新鲜度。报告带
-`scopeLimits`；`0 findings` 只表示确定性结构范围通过，不代表中文语义或单元格结构已通过。
+算法控制流、段落断裂、连字符、参考文献、表格裁剪/文字行边界、表格行列结构/
+续表、跨栏阅读顺序、未表达的内容分隔线和报告新鲜度。报告带
+`scopeLimits`；`0 findings` 只表示确定性结构范围通过。新增无框表样本已建立
+`Table 1 13×3 / Table 2 8×3` 的单元格金标，但中文语义、OCR 与复杂附录图表仍不能
+仅凭该门禁推断为正确。
 
 ## 产物
 
@@ -88,8 +91,8 @@ npm run audit:pdf -- <after-dir> --out <audit-dir> --baseline <before-audit.json
 | 参考文献 | 34 条（与样本工程台账一致） |
 | 提取耗时 | 约 6–7 秒（含 200 DPI 裁剪，不含截图） |
 | 图片加载 | 21/21 成功，浏览器 console 0 error |
-| L0 单测 | Python PDF 管线 70/70；Node 173/173 |
-| 回归 | 6/6 selected `ok:true`；所有样本无结构 error，孤立图注以 warning 保留（D-093） |
+| L0 单测 | Python PDF 管线 78/78；Node 174/174 |
+| 回归 | 7/7 selected `ok:true`；表格题注未绑定升级为 error，非表格孤立图注以 warning 保留（D-094） |
 
 样本 PDF 与裁剪图只放在 `工具/gen/`（已被 `.gitignore` 忽略），不随插件发布。
 
