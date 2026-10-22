@@ -20,10 +20,12 @@ from extract_pdf import (  # noqa: E402
     _algorithm_steps,
     _equation_regions,
     _group_chars_to_lines,
+    _infer_column_structure,
     _infer_column_split,
     _is_rotated_page,
     _is_caption_continuation,
     annotate_roles,
+    attach_content_rules,
     build_blocks,
     build_coverage,
     build_mirrordoc,
@@ -45,7 +47,12 @@ from reconcile_layout import (  # noqa: E402
     text_quality_issues,
 )
 from ai_order_audit import _extract_json, build_outline  # noqa: E402
-from audit_structure import build_report, detect_unattached_captions  # noqa: E402
+from audit_structure import (  # noqa: E402
+    build_report,
+    detect_reading_order,
+    detect_separators,
+    detect_unattached_captions,
+)
 from render_html import render_html  # noqa: E402
 
 
@@ -143,6 +150,65 @@ class TextReconstructionTests(unittest.TestCase):
         ]
         lines = _group_chars_to_lines(chars, 7, "full")
         self.assertEqual(lines[-1]["text"], "4.4 Network Analysis Approaches")
+
+    def test_line_diagnostics_record_center_gap(self):
+        chars = [
+            char("left column text", 40, 260),
+            char("right column text", 300, 520),
+        ]
+        lines = _group_chars_to_lines(chars, 7, "full", page_width=595.0)
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(lines[0]["maxCenterGap"], 40.0)
+        self.assertGreaterEqual(lines[0]["maxInternalGap"], 40.0)
+
+    def test_reading_order_audit_flags_full_width_cross_column_line(self):
+        findings, summary = detect_reading_order(
+            [
+                {
+                    "id": "p007-f001",
+                    "page": 7,
+                    "role": "prose",
+                    "columnScope": "full",
+                    "text": "left column prose that continues into the right column prose",
+                    "x0": 40,
+                    "top": 200,
+                    "x1": 540,
+                    "bottom": 210,
+                    "pageWidth": 595,
+                    "maxCenterGap": 60,
+                }
+            ]
+        )
+        self.assertEqual([item["rule"] for item in findings], ["reading-order.cross-column-line"])
+        self.assertEqual(summary["crossColumnLines"], 1)
+
+    def test_separator_audit_flags_unrepresented_content_rule(self):
+        rules = [
+            {
+                "id": "p010-hr001",
+                "page": 10,
+                "x0": 40,
+                "top": 265,
+                "x1": 500,
+                "bottom": 265,
+            }
+        ]
+        findings, summary = detect_separators([], rules)
+        self.assertEqual([item["rule"] for item in findings], ["separator.unrepresented"])
+        self.assertEqual(summary["unrepresented"], 1)
+
+    def test_separator_audit_accepts_block_and_visual_rule_slots(self):
+        rules = [
+            {"id": "p010-hr001", "page": 10},
+            {"id": "p010-hr002", "page": 10},
+        ]
+        blocks = [
+            {"type": "separator", "ruleId": "p010-hr001"},
+            {"type": "algorithm", "visualRules": [{"ruleId": "p010-hr002"}]},
+        ]
+        findings, summary = detect_separators(blocks, rules)
+        self.assertEqual(findings, [])
+        self.assertEqual(summary["represented"], 2)
 
 
 class ClassificationTests(unittest.TestCase):
@@ -454,7 +520,11 @@ class ColumnDetectionTests(unittest.TestCase):
                     words.append({"x0": 320, "x1": 540, "top": y, "bottom": y + 8})
                 return words
 
-        self.assertEqual(_infer_column_split(FakePage()), 320)
+        self.assertEqual(_infer_column_split(FakePage()), 314)
+        self.assertEqual(
+            _infer_column_structure(FakePage()),
+            {"split": 314.0, "top": 100.0},
+        )
 
     def test_does_not_split_full_width_reference_lines_at_page_midpoint(self):
         class FakePage:
@@ -723,6 +793,36 @@ class MirrorDocTests(unittest.TestCase):
         self.assertIn("1: Start", html)
         self.assertNotIn("Algorithm 1</span>Algorithm 1.", html)
 
+    def test_standalone_html_renders_separator_and_algorithm_rule(self):
+        doc = {
+            "meta": {"title": "T", "pageCount": 1},
+            "version": {},
+            "coverage": {},
+            "outline": [],
+            "blocks": [
+                {
+                    "id": "b0000",
+                    "type": "separator",
+                    "page": 1,
+                    "text": "",
+                    "ruleId": "p001-hr001",
+                },
+                {
+                    "id": "b0001",
+                    "type": "algorithm",
+                    "page": 1,
+                    "label": "Algorithm 1",
+                    "caption": "Algorithm 1. Control loop.",
+                    "text": "Algorithm 1. Control loop.",
+                    "algorithmText": "1: Start",
+                    "visualRules": [{"ruleId": "p001-hr002"}],
+                },
+            ],
+        }
+        html = render_html(doc)
+        self.assertIn('class="separator"', html)
+        self.assertIn('class="algorithm-rule"', html)
+
 
 class ReconcileTests(unittest.TestCase):
     def test_normalize_text_collapses_pdf_whitespace(self):
@@ -878,6 +978,46 @@ class ReconcileTests(unittest.TestCase):
         out, _ = cleanup_noise(blocks)
         self.assertEqual(out[0]["caption"], "TABLE 2")
         self.assertEqual(len(out), 2)
+
+    def test_cleanup_keeps_repeated_short_search_operator(self):
+        blocks = [
+            {"type": "paragraph", "page": 4, "text": "[AND]"},
+            {"type": "paragraph", "page": 5, "text": "[AND]"},
+        ]
+        out, removed = cleanup_noise(blocks)
+        self.assertEqual([block["text"] for block in out], ["[AND]", "[AND]"])
+        self.assertEqual(removed, 0)
+
+    def test_cleanup_keeps_separator_block(self):
+        blocks = [
+            {"type": "paragraph", "page": 2, "text": "Before.", "bbox": [40, 100, 500, 110]},
+            {"type": "separator", "page": 2, "text": "", "ruleId": "p002-hr001"},
+            {"type": "paragraph", "page": 2, "text": "After.", "bbox": [40, 120, 500, 130]},
+        ]
+        out, removed = cleanup_noise(blocks)
+        self.assertEqual([block["type"] for block in out], ["paragraph", "separator", "paragraph"])
+        self.assertEqual(removed, 0)
+
+    def test_content_rules_become_separator_or_special_visual_rule(self):
+        blocks = [
+            {"type": "paragraph", "page": 2, "bbox": [40, 100, 500, 110], "text": "Before."},
+            {"type": "algorithm", "page": 2, "bbox": [40, 130, 500, 220], "text": "Algorithm 1"},
+            {"type": "heading", "page": 2, "bbox": [40, 240, 500, 250], "text": "Next"},
+        ]
+        rules = [
+            {"id": "p002-hr001", "page": 2, "top": 120, "bottom": 120, "x0": 40, "x1": 500},
+            {"id": "p002-hr002", "page": 2, "top": 150, "bottom": 150, "x0": 40, "x1": 500},
+            {"id": "p002-hr003", "page": 2, "top": 230, "bottom": 230, "x0": 40, "x1": 500},
+        ]
+        attach_content_rules(blocks, rules)
+        self.assertEqual(
+            [block["type"] for block in blocks],
+            ["paragraph", "separator", "algorithm", "separator", "heading"],
+        )
+        self.assertEqual(
+            [item["ruleId"] for item in blocks[2]["visualRules"]],
+            ["p002-hr002"],
+        )
 
     def test_supporting_information_is_split_into_headed_items(self):
         blocks = [{

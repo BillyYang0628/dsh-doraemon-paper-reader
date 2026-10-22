@@ -659,7 +659,8 @@ def cleanup_noise(blocks: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], i
     repeated = Counter(
         str(block.get("text") or "").strip()
         for block in blocks
-        if block.get("type") == "paragraph" and 0 < len(str(block.get("text") or "").strip()) <= 60
+        if block.get("type") == "paragraph"
+        and 12 <= len(str(block.get("text") or "").strip()) <= 60
     )
     running_heads = {text for text, count in repeated.items() if count >= 2}
     captions = {
@@ -676,7 +677,7 @@ def cleanup_noise(blocks: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], i
         if block.get("type") in ("paragraph", "caption", "heading", "code"):
             text = LEADING_DOTS_RE.sub("", text).strip()
             block["text"] = text
-        if not text:
+        if not text and block.get("type") != "separator":
             removed += 1
             continue
         if (
@@ -773,7 +774,7 @@ def order_blocks_by_column(blocks: List[Dict[str, Any]], lines: List[Dict[str, A
             continue
         source = by_id.get(str((block.get("sourceIds") or [""])[0]))
         column = "full"
-        if block.get("type") in ("table", "figure", "caption") and block.get("bbox"):
+        if block.get("type") in ("table", "figure", "caption", "separator") and block.get("bbox"):
             bbox = [float(value) for value in block["bbox"]]
             page_width = float(source.get("pageWidth", 612.0)) if source else 612.0
             if bbox[2] - bbox[0] > page_width * 0.6:

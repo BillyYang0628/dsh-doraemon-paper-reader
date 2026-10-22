@@ -263,6 +263,14 @@ test('阅读页页码：正文按页合并，特殊信息保留独立入口', as
   assert.match(source, /\.dpr-readerPage\.is-special\{opacity:\.92/)
 })
 
+test('阅读页分隔线：内容边界与算法内部规则分别渲染', async () => {
+  const source = await readFile(CLIENT_FILE, 'utf8')
+  assert.match(source, /if \(block\.type === 'separator'\)/)
+  assert.match(source, /className: 'dpr-readerSeparator'/)
+  assert.match(source, /\.dpr-readerAlgorithmRule\{/)
+  assert.match(source, /block\.visualRules \|\| \[\]/)
+})
+
 test('阅读页增强：公式/表格按钮、回跳 BroadcastChannel 与整篇复核入口已接线', async () => {
   const source = await readFile(CLIENT_FILE, 'utf8')
   assert.match(source, /startVisualJob\('formulas'\)/)

@@ -357,6 +357,93 @@ def detect_abstract_issues(
     return out
 
 
+def detect_reading_order(lines: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Find full-width text lines that still contain a two-column gutter."""
+    findings: List[Dict[str, Any]] = []
+    for line in lines:
+        if line.get("role") not in ("prose", "heading"):
+            continue
+        if line.get("columnScope") != "full":
+            continue
+        text = normalized(line.get("text"))
+        if len(text) < 40:
+            continue
+        page_width = float(line.get("pageWidth") or 595.0)
+        x0 = float(line.get("x0") or 0)
+        x1 = float(line.get("x1") or 0)
+        gap = float(line.get("maxCenterGap") or 0)
+        if x0 > page_width * 0.27 or x1 < page_width * 0.73 or gap < 18:
+            continue
+        findings.append(
+            finding(
+                "reading-order.cross-column-line",
+                "error",
+                "全宽文本行仍跨越双栏栏缝，左右栏内容被拼成一个视觉行",
+                sourceId=line.get("id"),
+                page=line.get("page"),
+                bbox=[
+                    round(float(line.get("x0") or 0), 2),
+                    round(float(line.get("top") or 0), 2),
+                    round(float(line.get("x1") or 0), 2),
+                    round(float(line.get("bottom") or 0), 2),
+                ],
+                maxCenterGap=gap,
+                text=text[:260],
+            )
+        )
+    return findings, {
+        "fullWidthLines": sum(1 for line in lines if line.get("columnScope") == "full"),
+        "crossColumnLines": len(findings),
+        "pages": sorted(
+            {
+                int(item["evidence"]["page"])
+                for item in findings
+                if item.get("evidence", {}).get("page") is not None
+            }
+        ),
+    }
+
+
+def detect_separators(
+    blocks: List[Dict[str, Any]],
+    rules: List[Dict[str, Any]],
+) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Check that detected content rules entered a block or visual-rule slot."""
+    represented = {
+        str(block.get("ruleId"))
+        for block in blocks
+        if block.get("type") == "separator" and block.get("ruleId")
+    }
+    for block in blocks:
+        for rule in block.get("visualRules") or []:
+            if rule.get("ruleId"):
+                represented.add(str(rule["ruleId"]))
+    findings = []
+    for rule in rules:
+        if str(rule.get("id") or "") in represented:
+            continue
+        findings.append(
+            finding(
+                "separator.unrepresented",
+                "error",
+                "检测到正文/特殊块分隔线，但 MirrorDoc 没有对应结构",
+                ruleId=rule.get("id"),
+                page=rule.get("page"),
+                bbox=[rule.get("x0"), rule.get("top"), rule.get("x1"), rule.get("bottom")],
+                aboveRole=rule.get("aboveRole"),
+                belowRole=rule.get("belowRole"),
+                aboveText=rule.get("aboveText"),
+                belowText=rule.get("belowText"),
+            )
+        )
+    return findings, {
+        "detected": len(rules),
+        "represented": len(rules) - len(findings),
+        "unrepresented": len(findings),
+        "pages": sorted({int(rule.get("page") or 0) for rule in rules}),
+    }
+
+
 def detect_coverage_and_freshness(
     job: Path,
     lines: List[Dict[str, Any]],
@@ -851,6 +938,7 @@ def build_report(job: Path) -> Dict[str, Any]:
     doc = load_json(job / "mirrordoc.json", {})
     layout = load_json(job / "layout-report.json", {})
     assets = load_json(job / "assets.json", [])
+    rules = load_json(job / "rules.json", [])
     blocks = list(doc.get("blocks") or [])
     sizes = [
         float(line.get("size") or 0)
@@ -881,6 +969,8 @@ def build_report(job: Path) -> Dict[str, Any]:
     paragraph_findings, paragraphs = detect_paragraph_issues(blocks, lines)
     reference_findings, references = detect_references(blocks)
     table_findings, tables = detect_tables(blocks, lines, layout)
+    reading_order_findings, reading_order = detect_reading_order(lines)
+    separator_findings, separators = detect_separators(blocks, rules)
     findings.extend(coverage_findings)
     findings.extend(detect_suspicious_headings(blocks, lines, running_ids))
     findings.extend(detect_algorithm_issues(blocks, lines))
@@ -889,6 +979,8 @@ def build_report(job: Path) -> Dict[str, Any]:
     findings.extend(paragraph_findings)
     findings.extend(reference_findings)
     findings.extend(table_findings)
+    findings.extend(reading_order_findings)
+    findings.extend(separator_findings)
 
     severity_counts = Counter(item["severity"] for item in findings)
     by_type = Counter(str(block.get("type") or "unknown") for block in blocks)
@@ -909,6 +1001,8 @@ def build_report(job: Path) -> Dict[str, Any]:
             "severity": dict(sorted(severity_counts.items())),
         },
         "coverage": coverage,
+        "readingOrder": reading_order,
+        "separators": separators,
         "paragraphs": paragraphs,
         "references": references,
         "tables": tables,
@@ -917,7 +1011,7 @@ def build_report(job: Path) -> Dict[str, Any]:
         "scopeLimits": [
             "deterministic structure only; Chinese translation semantics are not scored",
             "table crops are checked by row continuity and source coverage, not cell-level visual truth",
-            "content separators/horizontal rules are not yet represented as blocks (R-013 remains open)",
+            "content rules are scored only after isolated body-rule detection; table/vector borders use asset coverage",
             "no external model verdict is used; ok=true means this audit scope passed",
         ],
         "ok": not any(item["severity"] == "error" for item in findings),
@@ -948,6 +1042,8 @@ def write_markdown(path: Path, report: Dict[str, Any]) -> None:
         json.dumps(
             {
                 "coverage": report["coverage"],
+                "readingOrder": report["readingOrder"],
+                "separators": report["separators"],
                 "paragraphs": report["paragraphs"],
                 "references": report["references"],
                 "tables": report["tables"],

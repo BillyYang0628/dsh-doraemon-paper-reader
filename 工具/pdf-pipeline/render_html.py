@@ -96,9 +96,14 @@ def render_block(block: Dict[str, Any]) -> str:
             if caption.lower().startswith(label.lower())
             else f'<span class="asset-label">{label}</span>'
         )
+        visual_rules = "".join(
+            '<hr class="algorithm-rule" aria-hidden="true">'
+            for _ in block.get("visualRules") or []
+        )
         return (
             f'<figure id="{block_id}" class="algorithm">'
             f"<figcaption>{label_html}{caption}</figcaption>"
+            f"{visual_rules}"
             f'<pre class="code"><code>{algorithm_text}</code></pre>'
             f"{page_badge(block)}{locator(block)}</figure>"
         )
@@ -119,6 +124,8 @@ def render_block(block: Dict[str, Any]) -> str:
             f'<pre id="{block_id}" class="code"><code>{esc(text)}</code>'
             f"{page_badge(block)}{locator(block)}</pre>"
         )
+    if kind == "separator":
+        return f'<hr id="{block_id}" class="separator" aria-hidden="true">'
     return (
         f'<p id="{block_id}" class="prose">{esc(text)}'
         f"{page_badge(block)}{locator(block)}</p>"
@@ -246,6 +253,9 @@ h1 {{ font-size: clamp(28px, 4vw, 42px); line-height: 1.16; letter-spacing: -.02
 .section-heading {{ font-size: clamp(21px, 2.6vw, 29px); line-height: 1.25; margin: 40px 0 14px; letter-spacing: -.01em; scroll-margin-top: 20px; }}
 .prose {{ margin: 0 0 16px; font-size: clamp(16px, 1.35vw, 18px); text-align: justify; hyphens: auto; }}
 .prose:first-letter {{ }}
+.separator {{ height: 1px; margin: 22px 0; border: 0; background: var(--rule); }}
+.algorithm {{ margin: 24px 0 28px; padding: 12px 14px; background: #f8f6ef; border: 1px solid var(--rule); border-radius: 10px; }}
+.algorithm-rule {{ height: 1px; margin: 10px 0; border: 0; background: var(--rule); }}
 .asset {{ margin: 26px 0 28px; padding: 12px; background: #fffdf8; border: 1px solid var(--paper-edge); border-radius: 12px; }}
 .asset img {{ display: block; max-width: 100%; height: auto; margin: 0 auto; border-radius: 5px; }}
 .asset figcaption {{ margin-top: 10px; color: var(--muted); font-size: 14px; line-height: 1.55; }}

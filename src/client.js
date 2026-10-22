@@ -981,6 +981,8 @@ window.__ModuleLoader__.load({
   color:var(--dsw-alias-label-primary);scroll-margin-top:48px}
 .dpr-readerP{margin:0 0 13px;font-size:var(--dsh-content-font-size,14px);line-height:1.75;text-align:left;
   text-indent:0;color:var(--dsw-alias-label-primary)}
+.dpr-readerSeparator{height:1px;margin:18px 0;border:0;background:var(--dsw-alias-border-l2)}
+.dpr-readerAlgorithmRule{height:1px;margin:10px 0;border:0;background:var(--dsw-alias-border-l2)}
 .dpr-biBlock{margin:0 0 16px}
 .dpr-biPair{margin:0 0 8px}
 .dpr-biSource{display:block;font-size:var(--dsh-content-font-size,14px);line-height:1.72;
@@ -5950,6 +5952,17 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
       const renderBlock = (block) => {
         if (!block?.id) return null
         if (block.type === 'reference') return null
+        if (block.type === 'separator') {
+          return React.createElement('hr', {
+            key: block.id,
+            id: block.id,
+            className: 'dpr-readerSeparator',
+            'data-block-id': block.id,
+            'data-page': block.page,
+            'data-rule-id': block.ruleId || '',
+            'aria-hidden': 'true',
+          })
+        }
         const count = countFor(block.id)
         const className =
           'dpr-cmpBlock' +
@@ -10725,6 +10738,17 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
       const renderBlock = (block) => {
         const id = block.id
         if (block.type === 'title' || block.type === 'abstract' || block.type === 'keywords') return null
+        if (block.type === 'separator') {
+          return React.createElement('hr', {
+            key: id,
+            id,
+            className: 'dpr-readerSeparator',
+            'data-block-id': id,
+            'data-page': block.page,
+            'data-rule-id': block.ruleId || '',
+            'aria-hidden': 'true',
+          })
+        }
         if (block.type === 'heading') {
           const level = Math.min(4, Math.max(2, Number(block.level || 1) + 1))
           const translated = translationFor(block.id)
@@ -10804,6 +10828,14 @@ body[data-ds-dark-theme] .dpr-mascotSticker{
               caption,
               pageBadge(block.page, { always: true }),
               bubbleFor(block),
+            ),
+            ...(block.visualRules || []).map((rule, index) =>
+              React.createElement('hr', {
+                key: 'algorithm-rule-' + index,
+                className: 'dpr-readerAlgorithmRule',
+                'data-rule-id': rule.ruleId || '',
+                'aria-hidden': 'true',
+              }),
             ),
             React.createElement(
               'pre',

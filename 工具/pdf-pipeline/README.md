@@ -50,7 +50,8 @@ npm run audit:pdf -- <after-dir> --out <audit-dir> --baseline <before-audit.json
 ```
 
 审计输出 `audit-report.json` / `audit-report.md`，规则覆盖页眉污染、假标题、Abstract、
-算法控制流、段落断裂、连字符、参考文献、表格裁剪/文字行边界和报告新鲜度。报告带
+算法控制流、段落断裂、连字符、参考文献、表格裁剪/文字行边界、跨栏阅读顺序、
+未表达的内容分隔线和报告新鲜度。报告带
 `scopeLimits`；`0 findings` 只表示确定性结构范围通过，不代表中文语义或单元格结构已通过。
 
 ## 产物
@@ -63,6 +64,7 @@ npm run audit:pdf -- <after-dir> --out <audit-dir> --baseline <before-audit.json
 | `paper-summary.json` | 供提问复用的精简原文概要：摘要、章节 gist、图表公式题注、参考文献数 |
 | `lines.json` | 每一行文本的位置戳、字号、字体、角色、栏位 |
 | `assets.json` | 图/表/公式的页码、bbox、题注、裁剪图路径 |
+| `rules.json` | 去重后的内容水平线；后续映射为 `separator` 或特殊块 `visualRules` |
 | `assets/*.png` | 从原页裁剪的图、表、公式 |
 | `source-pages/*.png` | 原版页渲染，供“原版 p.N”核对 |
 | `report.md` | 本次提取的页数、覆盖率、块类型、资产数量 |
@@ -86,8 +88,8 @@ npm run audit:pdf -- <after-dir> --out <audit-dir> --baseline <before-audit.json
 | 参考文献 | 34 条（与样本工程台账一致） |
 | 提取耗时 | 约 6–7 秒（含 200 DPI 裁剪，不含截图） |
 | 图片加载 | 21/21 成功，浏览器 console 0 error |
-| L0 单测 | Python PDF 管线 62/62；Node 171/171 |
-| 回归 | 6/6 selected `ok:true`；所有样本无结构 error，孤立图注以 warning 保留（D-090） |
+| L0 单测 | Python PDF 管线 70/70；Node 173/173 |
+| 回归 | 6/6 selected `ok:true`；所有样本无结构 error，孤立图注以 warning 保留（D-093） |
 
 样本 PDF 与裁剪图只放在 `工具/gen/`（已被 `.gitignore` 忽略），不随插件发布。
 
@@ -113,7 +115,7 @@ npm run audit:pdf -- <after-dir> --out <audit-dir> --baseline <before-audit.json
 - **整页旋转密集表**会先压缩再按 8% 重叠纵向切片重试；仍失败时明确降级为原表，不做猜测（D-050）。
 - **扫描件没有 OCR**；当前依赖文本层。
 - **跨页段落**按页断开；后续可按章节合并。
-- **双栏/多栏**只做了首页侧栏与简单垂直空白带检测；复杂三栏、跨栏图表需要更完整的版面模型。
+- **双栏/多栏**已支持全宽表/图之后的 word-start 栏结构恢复；复杂三栏与全宽正文块仍需要更完整的版面模型。
 - **题注续行**是启发式；下一版应结合字号、缩进、题注编号与图表 bbox 一起判。
 - **HTML 阅读器**尚未接入 DSH 页签、选区、批注、引用蓝链和原版 PDF 内嵌视图。
 

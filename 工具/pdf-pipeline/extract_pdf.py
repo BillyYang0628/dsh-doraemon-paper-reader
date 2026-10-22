@@ -256,14 +256,16 @@ def _is_rotated_page(page: pdfplumber.page.Page) -> bool:
     return sideways / len(text_chars) > 0.5
 
 
-def _infer_column_split(page: pdfplumber.page.Page) -> Optional[float]:
+def _infer_column_structure(page: pdfplumber.page.Page) -> Optional[Dict[str, float]]:
     """Infer columns from word starts when a figure fills the whitespace band.
 
     PLOS pages often have a full-width figure/table whose text/images occupy
     the central gutter, so the occupancy-based detector cannot see a clean
     band. A two-column page still has many words starting near the left margin
     and many starting just right of the midpoint; use that instead of treating
-    the page as one giant line.
+    the page as one giant line. The result also includes the first row where
+    the inferred right column becomes stable, so upper full-width objects can
+    stay outside the column buckets.
     """
     try:
         words = page.extract_words()
@@ -286,11 +288,11 @@ def _infer_column_split(page: pdfplumber.page.Page) -> Optional[float]:
     # right half, which used to look like a second column and split every
     # visual line in the middle. A real column has a visible run of line
     # starts near one shared gutter (PLOS ~315 on a 612pt page).
-    mid_band = width * 0.07
+    mid_band = (width * 0.43, width * 0.65)
     anchored_starts = Counter(
         round(float(word["x0"]), 1)
-        for word in right
-        if abs(float(word["x0"]) - width * 0.5) <= mid_band
+        for word in words
+        if mid_band[0] <= float(word["x0"]) <= mid_band[1]
     )
     if not anchored_starts:
         return None
@@ -301,18 +303,18 @@ def _infer_column_split(page: pdfplumber.page.Page) -> Optional[float]:
         return None
     anchored_y = sorted(
         float(word["top"])
-        for word in right
-        if round(float(word["x0"]), 1) == gutter_start
+        for word in words
+        if abs(float(word["x0"]) - gutter_start) <= 1.0
     )
     window = max(80.0, float(page.height) * 0.2)
-    clustered = max(
-        (
-            sum(1 for y in anchored_y if start <= y <= start + window)
-            for start in anchored_y
-        ),
-        default=0,
-    )
-    if clustered < 4:
+    best_start = None
+    best_count = 0
+    for start in anchored_y:
+        count = sum(1 for y in anchored_y if start <= y <= start + window)
+        if count > best_count:
+            best_start = start
+            best_count = count
+    if best_start is None or best_count < 4:
         return None
     crossing = sum(
         1
@@ -321,7 +323,16 @@ def _infer_column_split(page: pdfplumber.page.Page) -> Optional[float]:
     )
     if crossing / max(1, len(words)) > 0.08:
         return None
-    return float(gutter_start)
+    return {
+        "split": max(0.0, float(gutter_start) - 6.0),
+        "top": float(best_start),
+    }
+
+
+def _infer_column_split(page: pdfplumber.page.Page) -> Optional[float]:
+    """Backward-compatible split-only view used by diagnostics and tests."""
+    structure = _infer_column_structure(page)
+    return structure["split"] if structure else None
 
 
 def _column_end_for_full_width_artifact(
@@ -345,6 +356,7 @@ def _group_chars_to_lines(
     chars: List[Dict[str, Any]],
     page_no: int,
     scope: str,
+    page_width: float = 595.0,
 ) -> List[Dict[str, Any]]:
     """Group characters into visual lines inside one column."""
     clusters: List[List[Dict[str, Any]]] = []
@@ -420,6 +432,19 @@ def _group_chars_to_lines(
     out = []
     for line_index, cluster in enumerate(clusters, start=1):
         cluster.sort(key=lambda item: float(item["x0"]))
+        gaps = [
+            float(cluster[index]["x0"]) - float(cluster[index - 1]["x1"])
+            for index in range(1, len(cluster))
+        ]
+        internal_gaps = [round(gap, 2) for gap in gaps if gap >= 5.0]
+        center_gaps = [
+            round(gap, 2)
+            for index, gap in enumerate(gaps, start=1)
+            if gap >= 18.0
+            and page_width * 0.3
+            <= (float(cluster[index - 1]["x1"]) + float(cluster[index]["x0"])) / 2
+            <= page_width * 0.7
+        ]
         text = reconstruct_line_text(cluster)
         if not text:
             continue
@@ -439,6 +464,9 @@ def _group_chars_to_lines(
                 "font": _dominant(fonts),
                 "bold": any("Bold" in font or "bold" in font for font in fonts),
                 "italic": any("Italic" in font or "Oblique" in font for font in fonts),
+                "maxInternalGap": round(max(internal_gaps, default=0.0), 2),
+                "internalGapCount": len(internal_gaps),
+                "maxCenterGap": round(max(center_gaps, default=0.0), 2),
             }
         )
     return out
@@ -482,11 +510,14 @@ def extract_lines(
                 if lower_split is not None:
                     split = lower_split
                     region_top = 400.0
-            if split is None and page_no > 1:
-                inferred = _infer_column_split(page)
+            if split is None:
+                inferred = _infer_column_structure(page)
                 if inferred is not None:
-                    split = inferred
-                    region_top = 45.0
+                    split = inferred["split"]
+                    region_top = max(region_top, inferred["top"] - 2.0)
+                    detected = _detect_column_split(page, region_top)
+                    if detected is not None:
+                        split = detected
             column_end = page_height
             if split is not None and page_no > 1:
                 boundary = _column_end_for_full_width_artifact(
@@ -513,7 +544,12 @@ def extract_lines(
             for scope in ("full", "left", "right"):
                 if scope not in buckets:
                     continue
-                for line in _group_chars_to_lines(buckets[scope], page_no, scope):
+                for line in _group_chars_to_lines(
+                    buckets[scope],
+                    page_no,
+                    scope,
+                    float(page.width),
+                ):
                     line["page_height"] = page_height
                     line["pageWidth"] = float(page.width)
                     line["columnSplit"] = split
@@ -886,6 +922,126 @@ def _horizontal_rules(page: pdfplumber.page.Page) -> List[Dict[str, float]]:
         if 0 <= bottom - top <= 2.5 and x1 - x0 >= 80:
             rules.append({"x0": x0, "x1": x1, "top": (top + bottom) / 2})
     return rules
+
+
+def detect_content_rules(
+    pdf_path: Path,
+    lines: List[Dict[str, Any]],
+    assets: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Find horizontal drawing rules that carry document structure.
+
+    The same PDF primitive is used for page headers, table borders, algorithm
+    frames and content dividers. Keep only isolated body rules whose nearby
+    text is non-metadata, and reject rules that mostly overlap a visual asset.
+    """
+    out: List[Dict[str, Any]] = []
+    by_page: Dict[int, List[Dict[str, Any]]] = {}
+    for line in lines:
+        by_page.setdefault(int(line.get("page") or 0), []).append(line)
+    for page_lines in by_page.values():
+        page_lines.sort(key=lambda item: (float(item.get("top") or 0), float(item.get("x0") or 0)))
+
+    with pdfplumber.open(str(pdf_path)) as pdf:
+        for page_no, page in enumerate(pdf.pages, start=1):
+            page_width = float(page.width)
+            page_height = float(page.height)
+            candidates = [
+                {
+                    **rule,
+                    "kind": "line",
+                }
+                for rule in _horizontal_rules(page)
+            ]
+            deduped: List[Dict[str, Any]] = []
+            for rule in sorted(candidates, key=lambda item: (item["top"], item["x0"])):
+                duplicate = next(
+                    (
+                        existing
+                        for existing in deduped
+                        if abs(float(existing["top"]) - float(rule["top"])) <= 1.5
+                        and max(existing["x0"], rule["x0"])
+                        <= min(existing["x1"], rule["x1"])
+                    ),
+                    None,
+                )
+                if duplicate is None:
+                    deduped.append(rule)
+                else:
+                    duplicate["x0"] = min(float(duplicate["x0"]), float(rule["x0"]))
+                    duplicate["x1"] = max(float(duplicate["x1"]), float(rule["x1"]))
+
+            page_text = by_page.get(page_no, [])
+            for rule in deduped:
+                x0 = float(rule["x0"])
+                x1 = float(rule["x1"])
+                top = float(rule["top"])
+                width = x1 - x0
+                if width < page_width * 0.25 or top < 75 or top > page_height - 50:
+                    continue
+                overlap = 0.0
+                for asset in assets:
+                    if (
+                        int(asset.get("page") or 0) != page_no
+                        or asset.get("kind") not in ("figure", "table", "equation")
+                    ):
+                        continue
+                    bbox = [float(value) for value in asset.get("bbox") or []]
+                    if len(bbox) != 4 or not (bbox[1] - 8 <= top <= bbox[3] + 8):
+                        continue
+                    horizontal = max(0.0, min(x1, bbox[2]) - max(x0, bbox[0]))
+                    overlap = max(overlap, horizontal / max(width, 1.0))
+                if overlap >= 0.65:
+                    continue
+                above = [
+                    line
+                    for line in page_text
+                    if float(line.get("bottom") or 0) <= top + 2.0
+                ][-1:]
+                below = [
+                    line
+                    for line in page_text
+                    if float(line.get("top") or 0) >= top - 2.0
+                ][:1]
+                context = above + below
+                if not above or not below:
+                    continue
+                roles = {str(line.get("role") or "") for line in context}
+                distance = min(
+                    (
+                        min(
+                            abs(float(line.get("bottom") or 0) - top),
+                            abs(float(line.get("top") or 0) - top),
+                        )
+                        for line in context
+                    ),
+                    default=999.0,
+                )
+                if distance > 28:
+                    continue
+                if "furniture" in roles or roles <= {"title", "meta"}:
+                    continue
+                out.append(
+                    {
+                        "id": "",
+                        "page": page_no,
+                        "x0": round(x0, 2),
+                        "top": round(top, 2),
+                        "x1": round(x1, 2),
+                        "bottom": round(top, 2),
+                        "width": round(width, 2),
+                        "kind": "content-rule",
+                        "aboveRole": above[0].get("role") if above else "",
+                        "belowRole": below[0].get("role") if below else "",
+                        "aboveText": clean_text(above[0].get("text"))[:160] if above else "",
+                        "belowText": clean_text(below[0].get("text"))[:160] if below else "",
+                    }
+                )
+    for page_no in sorted({int(item["page"]) for item in out}):
+        page_rules = [item for item in out if int(item["page"]) == page_no]
+        for index, rule in enumerate(page_rules, start=1):
+            rule["id"] = f"p{page_no:03d}-hr{index:03d}"
+    return out
 
 
 def _cluster_rects(rects: List[Dict[str, float]], gap: float = 25.0) -> List[List[Dict[str, float]]]:
@@ -2293,6 +2449,107 @@ def attach_equation_assets(blocks: List[Dict[str, Any]], assets: List[Dict[str, 
                     break
 
 
+def attach_content_rules(blocks: List[Dict[str, Any]], rules: List[Dict[str, Any]]) -> None:
+    """Represent source horizontal rules without duplicating table borders.
+
+    Rules inside an algorithm/figure/table become visual-rule metadata; rules
+    between blocks become first-class separator blocks. A rule is never both.
+    """
+    for rule in sorted(rules, key=lambda item: (int(item.get("page") or 0), float(item.get("top") or 0))):
+        page = int(rule.get("page") or 0)
+        top = float(rule.get("top") or 0)
+        compact = {
+            "ruleId": rule.get("id"),
+            "x0": rule.get("x0"),
+            "top": rule.get("top"),
+            "x1": rule.get("x1"),
+            "bottom": rule.get("bottom"),
+        }
+        containing = []
+        for index, block in enumerate(blocks):
+            if int(block.get("page") or 0) != page:
+                continue
+            bbox = [float(value) for value in block.get("bbox") or []]
+            if len(bbox) != 4:
+                continue
+            horizontal = max(
+                0.0,
+                min(float(rule["x1"]), bbox[2])
+                - max(float(rule["x0"]), bbox[0]),
+            )
+            if (
+                bbox[1] + 0.05 <= top <= bbox[3] - 0.05
+                and horizontal
+                / max(float(rule.get("width") or (float(rule["x1"]) - float(rule["x0"]))), 1.0)
+                >= 0.35
+            ):
+                containing.append((index, block))
+        if containing:
+            index, block = min(
+                containing,
+                key=lambda item: (
+                    0 if item[1].get("type") in ("algorithm", "figure", "table", "equation", "code") else 1,
+                    float(item[1]["bbox"][1]),
+                ),
+            )
+            block.setdefault("visualRules", []).append(compact)
+            continue
+
+        same_page = [
+            (index, block)
+            for index, block in enumerate(blocks)
+            if int(block.get("page") or 0) == page and len(block.get("bbox") or []) == 4
+        ]
+        following = [
+            (index, block)
+            for index, block in same_page
+            if float(block["bbox"][1]) >= top - 1.0
+        ]
+        preceding = [
+            (index, block)
+            for index, block in same_page
+            if float(block["bbox"][3]) <= top + 1.0
+        ]
+        next_item = min(
+            following,
+            key=lambda item: (float(item[1]["bbox"][1]), item[0]),
+            default=None,
+        )
+        prev_item = max(
+            preceding,
+            key=lambda item: (float(item[1]["bbox"][3]), -item[0]),
+            default=None,
+        )
+        if next_item is None and prev_item is None:
+            continue
+        distance = min(
+            [
+                abs(float(item[1]["bbox"][1]) - top)
+                for item in [next_item]
+                if item is not None
+            ]
+            + [
+                abs(top - float(item[1]["bbox"][3]))
+                for item in [prev_item]
+                if item is not None
+            ]
+        )
+        if distance > 20.0:
+            continue
+        separator = {
+            "type": "separator",
+            "text": "",
+            "page": page,
+            "bbox": [float(rule["x0"]), top, float(rule["x1"]), top],
+            "sourceIds": [],
+            "ruleId": rule.get("id"),
+            "aboveRole": rule.get("aboveRole") or "",
+            "belowRole": rule.get("belowRole") or "",
+        }
+        insert_at = next_item[0] if next_item is not None else prev_item[0] + 1
+        blocks.insert(insert_at, separator)
+
+
 # ---------------------------------------------------------------------------
 # Metadata and coverage
 # ---------------------------------------------------------------------------
@@ -2540,6 +2797,7 @@ def main() -> int:
     assets = detect_assets(args.pdf, lines, min(page_count, args.max_pages or page_count))
     rotated_assets = rotated_table_assets(args.pdf, rotated_pages)
     assets.extend(rotated_assets)
+    content_rules = detect_content_rules(args.pdf, lines, assets)
     counts: Dict[str, int] = {}
     for asset in assets:
         counts[asset["kind"]] = counts.get(asset["kind"], 0) + 1
@@ -2573,6 +2831,7 @@ def main() -> int:
             }
         )
     attach_equation_assets(blocks, assets)
+    attach_content_rules(blocks, content_rules)
     meta = extract_metadata(lines, args.pdf, page_count)
     progress(args.progress, "mirror", "整理 MirrorDoc")
     doc = build_mirrordoc(args.pdf, lines, blocks, assets, meta)
@@ -2589,6 +2848,10 @@ def main() -> int:
     )
     (args.out / "assets.json").write_text(
         json.dumps(assets, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    (args.out / "rules.json").write_text(
+        json.dumps(content_rules, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
 

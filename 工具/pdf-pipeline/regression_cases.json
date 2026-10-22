@@ -76,7 +76,8 @@
         "reference": 43,
         "algorithm": 1,
         "abstract": 1,
-        "caption": 2
+        "caption": 2,
+        "separator": 2
       },
       "minBlockTypes": { "paragraph": 90, "heading": 18 },
       "referenceRange": [1, 43],
@@ -120,7 +121,8 @@
         "algorithm": 3,
         "figure": 12,
         "table": 1,
-        "reference": 20
+        "reference": 20,
+        "separator": 5
       },
       "minBlockTypes": { "paragraph": 160, "heading": 24 },
       "referenceRange": [1, 20],
@@ -153,9 +155,10 @@
       "blockTypes": {
         "abstract": 1,
         "keywords": 1,
-        "figure": 11,
+        "figure": 12,
         "table": 14,
-        "reference": 91
+        "reference": 91,
+        "separator": 4
       },
       "minBlockTypes": { "paragraph": 80, "heading": 18 },
       "referenceRange": [1, 91],

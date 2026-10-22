@@ -25,6 +25,9 @@ function parseArgs(argv) {
     else if (token === '--send-mode') out.sendMode = argv[++i]
     else if (token === '--title-includes') out.titleIncludes = argv[++i]
     else if (token === '--skip-model-answer') out.skipModelAnswer = true
+    else if (token === '--expect-separators') out.expectSeparators = Number(argv[++i])
+    else if (token === '--expect-algorithm-rules') out.expectAlgorithmRules = Number(argv[++i])
+    else if (token === '--focus-text') out.focusText = argv[++i]
     else throw new Error('未知参数：' + token)
   }
   return out
@@ -154,6 +157,8 @@ try {
   const flowBadgeCount = await flowBadges.count()
   const specialBadgeCount = await specialBadges.count()
   const flowBadgeLabels = await flowBadges.allInnerTexts()
+  const separatorCount = await page.locator('.dpr-readerSeparator').count()
+  const algorithmRuleCount = await page.locator('.dpr-readerAlgorithmRule').count()
   if (flowBadgeCount === 0) errors.push('正文没有渲染分组页码入口')
   if (new Set(flowBadgeLabels).size !== flowBadgeLabels.length) {
     errors.push('同一页码在正文页标中重复出现：' + JSON.stringify(flowBadgeLabels))
@@ -165,6 +170,37 @@ try {
     (await page.locator('.dpr-readerFigure, .dpr-readerAlgorithm, .dpr-readerCode').count()) > 0
   if (hasSpecialBlocks && specialBadgeCount === 0) {
     errors.push('图表/算法等特殊信息没有保留独立页码入口')
+  }
+  if (
+    Number.isFinite(args.expectSeparators) &&
+    separatorCount !== args.expectSeparators
+  ) {
+    errors.push(`内容分隔线数量不对：${separatorCount} != ${args.expectSeparators}`)
+  }
+  if (
+    Number.isFinite(args.expectAlgorithmRules) &&
+    algorithmRuleCount !== args.expectAlgorithmRules
+  ) {
+    errors.push(`算法内部规则数量不对：${algorithmRuleCount} != ${args.expectAlgorithmRules}`)
+  }
+  if (separatorCount > 0 || algorithmRuleCount > 0) {
+    const anchor =
+      algorithmRuleCount > 0
+        ? page.locator('.dpr-readerAlgorithm').first()
+        : page.locator('.dpr-readerSeparator').first()
+    await anchor.scrollIntoViewIfNeeded()
+    await page.waitForTimeout(250)
+    await page.screenshot({ path: path.join(outDir, 'separators.png') })
+  }
+  if (args.focusText) {
+    const focus = page.locator('.dpr-readerP', { hasText: args.focusText }).first()
+    if ((await focus.count()) === 0) {
+      errors.push('阅读页未找到要聚焦的正文：' + JSON.stringify(args.focusText))
+    } else {
+      await focus.scrollIntoViewIfNeeded()
+      await page.waitForTimeout(250)
+      await page.screenshot({ path: path.join(outDir, 'focus.png') })
+    }
   }
   const pageBadge = specialBadgeCount > 0 ? specialBadges.first() : flowBadges.first()
   if ((await pageBadge.count()) === 0) {
@@ -546,6 +582,10 @@ try {
           paragraphs: paragraphCount,
           flow: flowBadgeCount,
           special: specialBadgeCount,
+        },
+        separators: {
+          contentRules: separatorCount,
+          algorithmRules: algorithmRuleCount,
         },
         broken,
         warnings: ['聊天回答里的引用链接尚未稳定接入阅读页；当前使用段尾批注气泡高亮'],
