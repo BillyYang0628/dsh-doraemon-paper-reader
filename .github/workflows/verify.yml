@@ -19,6 +19,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Install Python pipeline dependencies
+        run: python -m pip install -r 工具/pdf-pipeline/requirements.txt
       - name: Offline verification
         run: npm run verify:offline
 
